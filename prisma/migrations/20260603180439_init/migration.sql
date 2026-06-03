@@ -40,7 +40,7 @@ CREATE TABLE "Salon" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "slug" TEXT NOT NULL,
-    "metier" "Metier" NOT NULL DEFAULT 'AUTRE',
+    "metier" "Metier"[] DEFAULT ARRAY[]::"Metier"[],
     "type" "SalonType",
     "arrondissement" TEXT,
     "address" TEXT,

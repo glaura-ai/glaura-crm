@@ -14,7 +14,7 @@ export async function getSalons(f: SalonFilters) {
   return prisma.salon.findMany({
     where: {
       ...(f.status ? { status: f.status as SalonStatus } : {}),
-      ...(f.metier ? { metier: f.metier as Metier } : {}),
+      ...(f.metier ? { metier: { has: f.metier as Metier } } : {}),
       ...(f.type ? { type: f.type as SalonType } : {}),
       ...(f.arr ? { arrondissement: f.arr } : {}),
       ...(q

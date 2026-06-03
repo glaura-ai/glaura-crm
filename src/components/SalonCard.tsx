@@ -29,7 +29,11 @@ export function SalonCard({ salon }: { salon: SalonListItem }) {
       <h3 className="pr-8 font-semibold text-slate-900">{salon.name}</h3>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{METIER_LABEL[salon.metier]}</span>
+        {salon.metier.map((m) => (
+          <span key={m} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+            {METIER_LABEL[m]}
+          </span>
+        ))}
         <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", STATUS_STYLE[salon.status])}>{STATUS_LABEL[salon.status]}</span>
       </div>
 

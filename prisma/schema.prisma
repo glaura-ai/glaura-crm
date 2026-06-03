@@ -99,8 +99,8 @@ model Salon {
   id             String      @id @default(cuid())
   name           String
   slug           String      @unique
-  metier         Metier      @default(AUTRE)
-  type           SalonType?
+  metier         Metier[]    @default([]) // a salon can span several métiers
+  type           SalonType? // deal-size tier: A = biggest deal … D = smallest
   arrondissement String?
   address        String?
   lat            Float?

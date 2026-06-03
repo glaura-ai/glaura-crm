@@ -42,7 +42,7 @@ async function main() {
       create: {
         name: s.name,
         slug,
-        metier: s.metier as never,
+        metier: [s.metier] as never,
         type: s.type as never,
         arrondissement: s.arr,
         address: `Paris ${s.arr}, France`,
