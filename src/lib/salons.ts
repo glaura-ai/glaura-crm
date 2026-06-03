@@ -34,6 +34,20 @@ export async function getSalons(f: SalonFilters) {
 
 export type SalonListItem = Awaited<ReturnType<typeof getSalons>>[number];
 
+export async function getSalon(id: string) {
+  return prisma.salon.findUnique({
+    where: { id },
+    include: {
+      assignedTo: { select: { name: true, email: true } },
+      activities: { orderBy: { createdAt: "desc" }, include: { user: { select: { name: true } } } },
+      reminders: { orderBy: [{ done: "asc" }, { dueAt: "asc" }] },
+      onboardingJobs: { orderBy: { createdAt: "desc" } },
+    },
+  });
+}
+
+export type SalonDetail = NonNullable<Awaited<ReturnType<typeof getSalon>>>;
+
 export async function getStatusCounts(): Promise<Record<string, number>> {
   const rows = await prisma.salon.groupBy({ by: ["status"], _count: { _all: true } });
   return Object.fromEntries(rows.map((r) => [r.status, r._count._all]));
