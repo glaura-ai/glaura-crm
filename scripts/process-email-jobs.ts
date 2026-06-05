@@ -5,6 +5,8 @@ import type { sendEmail as sendEmailFn } from "../src/lib/email";
 loadEnvConfig(process.cwd());
 
 const batchSize = Number(process.env.EMAIL_JOB_BATCH_SIZE || 10);
+const loop = process.argv.includes("--loop");
+const pollMs = Math.max(5, Number(process.env.EMAIL_JOB_POLL_SECONDS || 60)) * 1000;
 type Prisma = PrismaClient;
 type SendEmail = typeof sendEmailFn;
 
@@ -58,9 +60,7 @@ async function processJob(prisma: Prisma, sendEmail: SendEmail, id: string) {
   }
 }
 
-async function main() {
-  const { prisma } = await import("../src/lib/db");
-  const { sendEmail } = await import("../src/lib/email");
+async function processBatch(prisma: Prisma, sendEmail: SendEmail) {
   const jobs = await prisma.emailJob.findMany({
     where: { status: "QUEUED" },
     orderBy: { createdAt: "asc" },
@@ -73,6 +73,26 @@ async function main() {
   }
 
   console.log(`processed ${jobs.length} email job(s)`);
+}
+
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function main() {
+  const { prisma } = await import("../src/lib/db");
+  const { sendEmail } = await import("../src/lib/email");
+
+  if (!loop) {
+    await processBatch(prisma, sendEmail);
+    return;
+  }
+
+  console.log(`email worker polling every ${pollMs / 1000}s`);
+  while (true) {
+    await processBatch(prisma, sendEmail);
+    await sleep(pollMs);
+  }
 }
 
 main()

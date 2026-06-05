@@ -12,7 +12,8 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "import:airtable": "tsx scripts/import-airtable.ts",
-    "email:jobs": "tsx scripts/process-email-jobs.ts"
+    "email:jobs": "tsx scripts/process-email-jobs.ts",
+    "email:worker": "tsx scripts/process-email-jobs.ts --loop"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
