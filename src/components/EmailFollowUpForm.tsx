@@ -22,7 +22,6 @@ export function EmailFollowUpForm({ action, salon }: Props) {
   const [recipient, setRecipient] = useState(initialRecipient);
   const draft = useMemo(() => buildEmailDraft(template, salon), [template, salon]);
   const canQueue = isValidEmail(recipient);
-  const hasInvalidImportedEmail = Boolean(salon.contactEmail && !initialRecipient);
 
   return (
     <form action={action} className="space-y-2">
@@ -53,11 +52,7 @@ export function EmailFollowUpForm({ action, salon }: Props) {
       >
         Envoyer
       </button>
-      {hasInvalidImportedEmail ? (
-        <p className="text-xs text-amber-700">Email importé invalide: {salon.contactEmail}</p>
-      ) : !canQueue ? (
-        <p className="text-xs text-slate-400">Ajoute un email contact pour envoyer une relance.</p>
-      ) : null}
+      {!canQueue && <p className="text-xs text-slate-400">Ajoute un email contact pour envoyer une relance.</p>}
     </form>
   );
 }
