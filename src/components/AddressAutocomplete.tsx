@@ -40,12 +40,14 @@ export function AddressAutocomplete({
   const [lng, setLng] = useState(defaultLng != null ? String(defaultLng) : "");
   const [suggestions, setSuggestions] = useState<AddressFeature[]>([]);
   const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(false);
   const latestQuery = useRef("");
 
   useEffect(() => {
     const query = value.trim();
     latestQuery.current = query;
 
+    if (!active) return;
     if (query.length < 4) return;
 
     const controller = new AbortController();
@@ -77,7 +79,7 @@ export function AddressAutocomplete({
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [value]);
+  }, [active, value]);
 
   function selectSuggestion(feature: AddressFeature) {
     const label = feature.properties?.label?.trim();
@@ -98,6 +100,7 @@ export function AddressAutocomplete({
         value={value}
         onChange={(event) => {
           const nextValue = event.target.value;
+          setActive(true);
           setValue(nextValue);
           setLat("");
           setLng("");
@@ -107,6 +110,7 @@ export function AddressAutocomplete({
           }
         }}
         onFocus={() => {
+          setActive(true);
           if (suggestions.length > 0) setOpen(true);
         }}
         onBlur={() => window.setTimeout(() => setOpen(false), 120)}
