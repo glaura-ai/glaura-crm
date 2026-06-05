@@ -260,14 +260,6 @@ export async function queueFollowUpEmail(salonId: string, fd: FormData) {
     },
   });
 
-  await prisma.activity.create({
-    data: {
-      salonId,
-      userId: me.id,
-      type: "EMAIL",
-      notes: `Email en file pour ${payload.to}\nSujet: ${payload.subject}`,
-    },
-  });
   await prisma.salon.update({ where: { id: salonId }, data: { lastContactedAt: new Date() } });
   revalidatePath(`/salons/${salonId}`);
 }

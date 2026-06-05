@@ -40,14 +40,6 @@ async function processJob(prisma: Prisma, sendEmail: SendEmail, id: string) {
       where: { id: job.id },
       data: { status: "SENT", sentAt: new Date(), attempts: { increment: 1 }, lastError: null },
     });
-    await prisma.activity.create({
-      data: {
-        salonId: job.salonId,
-        userId: job.requestedById,
-        type: "EMAIL",
-        notes: `Email envoyé à ${job.to}\nSujet: ${job.subject}`,
-      },
-    });
     await prisma.salon.update({ where: { id: job.salonId }, data: { lastContactedAt: new Date() } });
     console.log(`sent ${job.id} to ${job.to}`);
   } catch (error) {

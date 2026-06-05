@@ -60,6 +60,7 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
   const latestJob = salon.onboardingJobs[0];
   const onboardingBusy = latestJob?.status === "QUEUED" || latestJob?.status === "PROCESSING";
   const canTrigger = !!me && hasBookingUrl && !onboardingBusy && (isAdmin || salon.assignedToId === me.id) && (isAdmin || salon.status === "SIGNE");
+  const visibleActivities = salon.activities.filter((activity) => activity.type !== "EMAIL");
   const editSalon = {
     name: salon.name,
     metier: salon.metier,
@@ -236,11 +237,11 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
 
           <div className={card}>
             <h2 className="mb-3 text-sm font-semibold text-slate-900">Historique</h2>
-            {salon.activities.length === 0 ? (
+            {visibleActivities.length === 0 ? (
               <p className="text-sm text-slate-400">Aucune activité.</p>
             ) : (
               <ul className="space-y-3">
-                {salon.activities.map((a) => (
+                {visibleActivities.map((a) => (
                   <li key={a.id} className="border-l-2 border-slate-100 pl-3">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium text-slate-700">{ACTIVITY_LABEL[a.type]}</span>
