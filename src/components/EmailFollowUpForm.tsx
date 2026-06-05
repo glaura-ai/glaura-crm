@@ -18,32 +18,50 @@ const textareaField = "w-full rounded-lg border border-slate-300 bg-white px-3 p
 
 export function EmailFollowUpForm({ action, salon }: Props) {
   const [template, setTemplate] = useState<EmailTemplateKey>("RELANCE");
+  const initialRecipient = isValidEmail(salon.contactEmail) ? salon.contactEmail!.trim() : "";
+  const [recipient, setRecipient] = useState(initialRecipient);
   const draft = useMemo(() => buildEmailDraft(template, salon), [template, salon]);
-  const hasEmail = Boolean(salon.contactEmail);
+  const canQueue = isValidEmail(recipient);
+  const hasInvalidImportedEmail = Boolean(salon.contactEmail && !initialRecipient);
 
   return (
     <form action={action} className="space-y-2">
-      <input name="to" type="email" defaultValue={salon.contactEmail || ""} className={field} placeholder="contact@salon.fr" disabled={!hasEmail} required />
+      <input
+        name="to"
+        type="email"
+        value={recipient}
+        onChange={(event) => setRecipient(event.target.value)}
+        className={field}
+        placeholder="contact@salon.fr"
+        required
+      />
       <select
         name="template"
         value={template}
         onChange={(event) => setTemplate(event.target.value as EmailTemplateKey)}
         className={field}
-        disabled={!hasEmail}
       >
         {EMAIL_TEMPLATES.map((key) => (
           <option key={key} value={key}>{EMAIL_TEMPLATE_LABEL[key]}</option>
         ))}
       </select>
-      <input key={`${template}-subject`} name="subject" defaultValue={draft.subject} className={field} disabled={!hasEmail} required />
-      <textarea key={`${template}-body`} name="body" rows={7} defaultValue={draft.body} className={textareaField} disabled={!hasEmail} required />
+      <input key={`${template}-subject`} name="subject" defaultValue={draft.subject} className={field} required />
+      <textarea key={`${template}-body`} name="body" rows={7} defaultValue={draft.body} className={textareaField} required />
       <button
-        disabled={!hasEmail}
+        disabled={!canQueue}
         className="w-full rounded-lg bg-slate-950 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
       >
         Mettre en file
       </button>
-      {!hasEmail && <p className="text-xs text-slate-400">Ajoute un email contact pour envoyer une relance.</p>}
+      {hasInvalidImportedEmail ? (
+        <p className="text-xs text-amber-700">Email importé invalide: {salon.contactEmail}</p>
+      ) : !canQueue ? (
+        <p className="text-xs text-slate-400">Ajoute un email contact pour envoyer une relance.</p>
+      ) : null}
     </form>
   );
+}
+
+function isValidEmail(value?: string | null): value is string {
+  return Boolean(value?.trim().match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/));
 }
