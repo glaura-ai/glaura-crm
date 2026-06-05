@@ -51,7 +51,7 @@ export function EmailFollowUpForm({ action, salon }: Props) {
         disabled={!canQueue}
         className="w-full rounded-lg bg-slate-950 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
       >
-        Mettre en file
+        Envoyer
       </button>
       {hasInvalidImportedEmail ? (
         <p className="text-xs text-amber-700">Email importé invalide: {salon.contactEmail}</p>
