@@ -61,6 +61,7 @@ export async function getSalon(id: string, viewer?: ViewerScope) {
       activities: { orderBy: { createdAt: "desc" }, include: { user: { select: { name: true } } } },
       reminders: { orderBy: [{ done: "asc" }, { dueAt: "asc" }] },
       onboardingJobs: { orderBy: { createdAt: "desc" } },
+      emailJobs: { orderBy: { createdAt: "desc" }, take: 5 },
     },
   });
 }

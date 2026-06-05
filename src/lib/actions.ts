@@ -5,7 +5,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
-import type { ActivityType, BookingTool, Metier, SalonStatus, SalonType } from "@/generated/prisma/enums";
+import { EMAIL_TEMPLATES } from "@/lib/emailTemplates";
+import { defaultEmailFrom } from "@/lib/email";
+import type { ActivityType, BookingTool, EmailTemplate, Metier, SalonStatus, SalonType } from "@/generated/prisma/enums";
 
 async function currentUser() {
   const s = await auth();
@@ -226,6 +228,47 @@ export async function addReminder(salonId: string, fd: FormData) {
 export async function completeReminder(reminderId: string, salonId: string) {
   await assertCanAccessSalon(salonId);
   await prisma.reminder.update({ where: { id: reminderId }, data: { done: true, doneAt: new Date() } });
+  revalidatePath(`/salons/${salonId}`);
+}
+
+const emailJobSchema = z.object({
+  to: z.email(),
+  template: z.enum(EMAIL_TEMPLATES),
+  subject: z.string().trim().min(2).max(160),
+  body: z.string().trim().min(10).max(6000),
+});
+
+export async function queueFollowUpEmail(salonId: string, fd: FormData) {
+  const me = await assertCanAccessSalon(salonId);
+  const payload = emailJobSchema.parse({
+    to: (fd.get("to") || "").toString().trim(),
+    template: (fd.get("template") || "").toString(),
+    subject: (fd.get("subject") || "").toString(),
+    body: (fd.get("body") || "").toString(),
+  });
+
+  await prisma.emailJob.create({
+    data: {
+      salonId,
+      requestedById: me.id,
+      to: payload.to,
+      from: defaultEmailFrom(),
+      template: payload.template as EmailTemplate,
+      subject: payload.subject,
+      body: payload.body,
+      status: "QUEUED",
+    },
+  });
+
+  await prisma.activity.create({
+    data: {
+      salonId,
+      userId: me.id,
+      type: "EMAIL",
+      notes: `Email en file pour ${payload.to}\nSujet: ${payload.subject}`,
+    },
+  });
+  await prisma.salon.update({ where: { id: salonId }, data: { lastContactedAt: new Date() } });
   revalidatePath(`/salons/${salonId}`);
 }
 

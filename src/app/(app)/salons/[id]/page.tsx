@@ -2,9 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { AutoRefresh } from "@/components/AutoRefresh";
+import { EmailFollowUpForm } from "@/components/EmailFollowUpForm";
 import { SalonEditModal } from "@/components/SalonEditModal";
 import { getSalon } from "@/lib/salons";
-import { addReminder, changeStatus, completeReminder, logActivity, triggerOnboarding, updateSalon } from "@/lib/actions";
+import { addReminder, changeStatus, completeReminder, logActivity, queueFollowUpEmail, triggerOnboarding, updateSalon } from "@/lib/actions";
 import {
   ACTIVITY_LABEL,
   BOOKING_LABEL,
@@ -33,6 +34,18 @@ const onboardingStatusStyle = {
   DONE: "bg-emerald-50 text-emerald-800 ring-emerald-200",
   FAILED: "bg-rose-50 text-rose-800 ring-rose-200",
   ALREADY_ONBOARDED: "bg-violet-50 text-violet-800 ring-violet-200",
+} as const;
+const emailStatusLabel = {
+  QUEUED: "En file",
+  SENDING: "Envoi",
+  SENT: "Envoyé",
+  FAILED: "Échec",
+} as const;
+const emailStatusStyle = {
+  QUEUED: "bg-amber-50 text-amber-800 ring-amber-200",
+  SENDING: "bg-sky-50 text-sky-800 ring-sky-200",
+  SENT: "bg-emerald-50 text-emerald-800 ring-emerald-200",
+  FAILED: "bg-rose-50 text-rose-800 ring-rose-200",
 } as const;
 
 export default async function SalonDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -244,6 +257,38 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
 
         {/* Right: reminders */}
         <div className="space-y-5">
+          <div className={card}>
+            <h2 className="mb-3 text-sm font-semibold text-slate-900">Email</h2>
+            <EmailFollowUpForm
+              action={queueFollowUpEmail.bind(null, id)}
+              salon={{
+                name: salon.name,
+                contactName: salon.contactName,
+                contactEmail: salon.contactEmail,
+                bookingUrl: salon.bookingUrl,
+              }}
+            />
+            {salon.emailJobs.length > 0 && (
+              <ul className="mt-4 space-y-2">
+                {salon.emailJobs.map((job) => (
+                  <li key={job.id} className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate font-semibold text-slate-700">{job.subject}</span>
+                      <span className={cn("shrink-0 rounded-full px-2 py-0.5 font-semibold ring-1", emailStatusStyle[job.status])}>
+                        {emailStatusLabel[job.status]}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-2 text-slate-400">
+                      <span className="truncate">{job.to}</span>
+                      <span className="shrink-0">{job.sentAt ? timeAgo(job.sentAt) : timeAgo(job.createdAt)}</span>
+                    </div>
+                    {job.lastError && <p className="mt-1 text-rose-600">{job.lastError}</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           <div className={card}>
             <h2 className="mb-3 text-sm font-semibold text-slate-900">Rappel / Relance</h2>
             <form action={addReminder.bind(null, id)} className="space-y-2">
