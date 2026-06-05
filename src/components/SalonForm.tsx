@@ -1,13 +1,34 @@
+import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { METIER_ORDER, METIER_LABEL, STATUS_ORDER, STATUS_LABEL, BOOKING_LABEL } from "@/lib/labels";
 import type { SalonDetail } from "@/lib/salons";
 
 const TYPES = ["A", "B", "C", "D"] as const;
 const TOOLS = ["NONE", "PLANITY", "TREATWELL", "ACUITY", "SITE"] as const;
 
-const field = "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-rose-300 focus:ring-2 focus:ring-rose-100";
-const labelCls = "mb-1 block text-xs font-medium text-slate-500";
+const field = "h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-950 shadow-sm outline-none placeholder:text-slate-400 focus:border-rose-400 focus:ring-2 focus:ring-rose-100";
+const textareaField = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-950 shadow-sm outline-none placeholder:text-slate-400 focus:border-rose-400 focus:ring-2 focus:ring-rose-100";
+const labelCls = "mb-1.5 block text-sm font-medium text-slate-700";
 
-export function SalonForm({ action, salon }: { action: (fd: FormData) => Promise<void>; salon?: SalonDetail | null }) {
+export type SalonFormValues = Pick<
+  SalonDetail,
+  | "name"
+  | "metier"
+  | "type"
+  | "status"
+  | "arrondissement"
+  | "phone"
+  | "contactName"
+  | "contactEmail"
+  | "address"
+  | "lat"
+  | "lng"
+  | "instagram"
+  | "bookingTool"
+  | "bookingUrl"
+  | "notes"
+>;
+
+export function SalonForm({ action, salon }: { action: (fd: FormData) => Promise<void>; salon?: SalonFormValues | null }) {
   return (
     <form action={action} className="space-y-4">
       <div>
@@ -19,8 +40,8 @@ export function SalonForm({ action, salon }: { action: (fd: FormData) => Promise
         <label className={labelCls}>Métiers</label>
         <div className="flex flex-wrap gap-2">
           {METIER_ORDER.map((m) => (
-            <label key={m} className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm has-[:checked]:border-rose-300 has-[:checked]:bg-rose-50">
-              <input type="checkbox" name="metier" value={m} defaultChecked={salon?.metier?.includes(m) ?? false} className="accent-rose-500" />
+            <label key={m} className="flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm has-[:checked]:border-rose-400 has-[:checked]:bg-rose-50 has-[:checked]:text-rose-700">
+              <input type="checkbox" name="metier" value={m} defaultChecked={salon?.metier?.includes(m) ?? false} className="h-4 w-4 accent-rose-500" />
               {METIER_LABEL[m]}
             </label>
           ))}
@@ -58,9 +79,20 @@ export function SalonForm({ action, salon }: { action: (fd: FormData) => Promise
         </div>
       </div>
 
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className={labelCls}>Nom du contact</label>
+          <input name="contactName" defaultValue={salon?.contactName ?? ""} className={field} placeholder="Responsable du salon" />
+        </div>
+        <div>
+          <label className={labelCls}>Email contact</label>
+          <input name="contactEmail" type="email" defaultValue={salon?.contactEmail ?? ""} className={field} placeholder="contact@salon.fr" />
+        </div>
+      </div>
+
       <div>
         <label className={labelCls}>Adresse</label>
-        <input name="address" defaultValue={salon?.address ?? ""} className={field} placeholder="12 rue de Rivoli, 75004 Paris" />
+        <AddressAutocomplete defaultValue={salon?.address} defaultLat={salon?.lat} defaultLng={salon?.lng} inputClassName={field} />
       </div>
 
       <div>
@@ -83,8 +115,13 @@ export function SalonForm({ action, salon }: { action: (fd: FormData) => Promise
         </div>
       </div>
 
+      <div>
+        <label className={labelCls}>Notes</label>
+        <textarea name="notes" defaultValue={salon?.notes ?? ""} rows={3} className={textareaField} placeholder="Contexte, objections, prochaine action…" />
+      </div>
+
       <div className="flex justify-end gap-2 pt-2">
-        <button type="submit" className="rounded-lg bg-rose-500 px-4 py-2 text-sm font-medium text-white hover:bg-rose-600">
+        <button type="submit" className="rounded-lg bg-rose-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-rose-600">
           {salon ? "Enregistrer" : "Créer le salon"}
         </button>
       </div>

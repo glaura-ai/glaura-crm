@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { getSalons } from "@/lib/salons";
+import { auth } from "@/auth";
+import { getSalonOwners, getSalons } from "@/lib/salons";
 import { SalonCard } from "@/components/SalonCard";
 import { PipelineFilters } from "@/components/PipelineFilters";
 
@@ -9,7 +10,11 @@ export default async function SalonsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const sp = await searchParams;
-  const salons = await getSalons(sp);
+  const session = await auth();
+  const viewer = session?.user ? { id: session.user.id, role: session.user.role } : undefined;
+  const isAdmin = viewer?.role === "ADMIN";
+  const filterParams = isAdmin ? sp : { ...sp, owner: undefined };
+  const [salons, owners] = await Promise.all([getSalons(filterParams, viewer), isAdmin ? getSalonOwners() : Promise.resolve([])]);
 
   return (
     <div className="mx-auto max-w-7xl p-6">
@@ -24,13 +29,13 @@ export default async function SalonsPage({
       </div>
 
       <div className="mb-4 flex flex-col gap-3">
-        <PipelineFilters params={sp} />
+        <PipelineFilters params={filterParams} owners={owners} />
         <form className="flex" action="/salons">
           {/* preserve active filters on search */}
-          {Object.entries(sp).filter(([k]) => k !== "q").map(([k, v]) => v && <input key={k} type="hidden" name={k} value={v} />)}
+          {Object.entries(filterParams).filter(([k]) => k !== "q").map(([k, v]) => v && <input key={k} type="hidden" name={k} value={v} />)}
           <input
             name="q"
-            defaultValue={sp.q ?? ""}
+            defaultValue={filterParams.q ?? ""}
             placeholder="Rechercher un salon, une adresse, un compte Insta…"
             className="w-full max-w-md rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-rose-300 focus:ring-2 focus:ring-rose-100"
           />

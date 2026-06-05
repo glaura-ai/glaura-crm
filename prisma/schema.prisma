@@ -96,31 +96,47 @@ model User {
 }
 
 model Salon {
-  id             String      @id @default(cuid())
-  name           String
-  slug           String      @unique
-  metier         Metier[]    @default([]) // a salon can span several métiers
-  type           SalonType? // deal-size tier: A = biggest deal … D = smallest
-  arrondissement String?
-  address        String?
-  lat            Float?
-  lng            Float?
-  phone          String?
-  instagram      String?
-  bookingTool    BookingTool @default(NONE)
-  bookingUrl     String?
-  rating         Float?
-  status         SalonStatus @default(A_VISITER)
-  notes          String?     @db.Text
+  id                 String      @id @default(cuid())
+  name               String
+  slug               String      @unique
+  metier             Metier[]    @default([]) // a salon can span several métiers
+  type               SalonType? // deal-size tier: A = biggest deal … D = smallest
+  arrondissement     String?
+  address            String?
+  lat                Float?
+  lng                Float?
+  phone              String?
+  contactName        String?
+  contactEmail       String?
+  instagram          String?
+  bookingTool        BookingTool @default(NONE)
+  bookingUrl         String?
+  rating             Float?
+  status             SalonStatus @default(A_VISITER)
+  notes              String?     @db.Text
+  objection          String?     @db.Text
+  priorityLabel      String?
+  leadTemperature    String?
+  accountStatusLabel String?
+  sourceLabel        String?
 
   assignedToId String?
   assignedTo   User?   @relation("AssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
 
-  source      LeadSource @default(MANUAL)
-  externalRef String?    @unique // airtable record id / import key
+  source            LeadSource @default(MANUAL)
+  externalRef       String?    @unique // airtable record id / import key
+  airtableBaseId    String?
+  airtableTableId   String?
+  airtableTableName String?
+  airtableRecordUrl String?
 
-  lastContactedAt DateTime?
-  nextActionAt    DateTime? // next planned touch — feeds "à relancer / priorités"
+  lastContactedAt     DateTime?
+  nextActionAt        DateTime? // next planned touch — feeds "à relancer / priorités"
+  signedAt            DateTime?
+  activatedAt         DateTime?
+  appointmentAt       DateTime?
+  clientBaseImported  Boolean   @default(false)
+  importedClientCount Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -134,6 +150,7 @@ model Salon {
   @@index([arrondissement])
   @@index([assignedToId])
   @@index([nextActionAt])
+  @@index([airtableBaseId])
 }
 
 model Activity {
@@ -167,15 +184,22 @@ model Reminder {
 }
 
 model OnboardingJob {
-  id            String           @id @default(cuid())
+  id            String  @id @default(cuid())
   salonId       String
-  salon         Salon            @relation(fields: [salonId], references: [id], onDelete: Cascade)
+  salon         Salon   @relation(fields: [salonId], references: [id], onDelete: Cascade)
   requestedById String?
-  requestedBy   User?            @relation(fields: [requestedById], references: [id], onDelete: SetNull)
+  requestedBy   User?   @relation(fields: [requestedById], references: [id], onDelete: SetNull)
 
-  sourceUrl     String
-  sourceType    String? // planity | treatwell | acuity | generic
-  status        OnboardingStatus @default(QUEUED)
+  sourceUrl  String
+  sourceType String? // planity | treatwell | acuity | generic
+  status     OnboardingStatus @default(QUEUED)
+
+  startedAt  DateTime?
+  finishedAt DateTime?
+  durationMs Int?
+  exitCode   Int?
+  eventCount Int       @default(0)
+  lastEventAt DateTime?
 
   accountUid    String?
   loginEmail    String?
@@ -184,11 +208,34 @@ model OnboardingJob {
   agentCount    Int?
   videoCount    Int?
   warnings      Json?
-  error         String?          @db.Text
+  error         String? @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  events OnboardingJobEvent[]
+
   @@index([status])
   @@index([salonId])
+  @@index([createdAt])
+}
+
+model OnboardingJobEvent {
+  id        String        @id @default(cuid())
+  jobId     String
+  job       OnboardingJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  sequence Int
+  stream   String // stdout | stderr | system
+  type     String?
+  subtype  String?
+  level    String?
+  text     String? @db.Text
+  data     Json?
+
+  createdAt DateTime @default(now())
+
+  @@unique([jobId, sequence])
+  @@index([jobId, createdAt])
+  @@index([type])
 }

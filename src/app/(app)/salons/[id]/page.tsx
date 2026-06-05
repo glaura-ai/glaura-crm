@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
+import { AutoRefresh } from "@/components/AutoRefresh";
+import { SalonEditModal } from "@/components/SalonEditModal";
 import { getSalon } from "@/lib/salons";
-import { addReminder, changeStatus, completeReminder, logActivity, triggerOnboarding } from "@/lib/actions";
+import { addReminder, changeStatus, completeReminder, logActivity, triggerOnboarding, updateSalon } from "@/lib/actions";
 import {
   ACTIVITY_LABEL,
   BOOKING_LABEL,
@@ -15,22 +17,57 @@ import {
 import { cn, timeAgo } from "@/lib/utils";
 
 const ACT_TYPES = ["APPEL", "VISIO", "VISITE", "RELANCE", "EMAIL", "DEMO", "NOTE"] as const;
-const card = "rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200";
-const field = "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-rose-300 focus:ring-2 focus:ring-rose-100";
+const card = "rounded-xl border border-slate-300 bg-white p-5 shadow-sm";
+const field = "h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-950 shadow-sm outline-none placeholder:text-slate-400 focus:border-rose-400 focus:ring-2 focus:ring-rose-100";
+const textareaField = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-950 shadow-sm outline-none placeholder:text-slate-400 focus:border-rose-400 focus:ring-2 focus:ring-rose-100";
+const onboardingStatusLabel = {
+  QUEUED: "En attente",
+  PROCESSING: "En cours",
+  DONE: "Compte préparé",
+  FAILED: "Échec",
+  ALREADY_ONBOARDED: "Déjà préparé",
+} as const;
+const onboardingStatusStyle = {
+  QUEUED: "bg-amber-50 text-amber-800 ring-amber-200",
+  PROCESSING: "bg-sky-50 text-sky-800 ring-sky-200",
+  DONE: "bg-emerald-50 text-emerald-800 ring-emerald-200",
+  FAILED: "bg-rose-50 text-rose-800 ring-rose-200",
+  ALREADY_ONBOARDED: "bg-violet-50 text-violet-800 ring-violet-200",
+} as const;
 
 export default async function SalonDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const salon = await getSalon(id);
-  if (!salon) notFound();
-
   const session = await auth();
   const me = session?.user;
+  const salon = await getSalon(id, me ? { id: me.id, role: me.role } : undefined);
+  if (!salon) notFound();
+
   const isAdmin = me?.role === "ADMIN";
-  const canTrigger = !!me && (isAdmin || salon.assignedToId === me.id) && (isAdmin || salon.status === "SIGNE");
+  const hasBookingUrl = !!salon.bookingUrl;
   const latestJob = salon.onboardingJobs[0];
+  const onboardingBusy = latestJob?.status === "QUEUED" || latestJob?.status === "PROCESSING";
+  const canTrigger = !!me && hasBookingUrl && !onboardingBusy && (isAdmin || salon.assignedToId === me.id) && (isAdmin || salon.status === "SIGNE");
+  const editSalon = {
+    name: salon.name,
+    metier: salon.metier,
+    type: salon.type,
+    status: salon.status,
+    arrondissement: salon.arrondissement,
+    phone: salon.phone,
+    contactName: salon.contactName,
+    contactEmail: salon.contactEmail,
+    address: salon.address,
+    lat: salon.lat,
+    lng: salon.lng,
+    instagram: salon.instagram,
+    bookingTool: salon.bookingTool,
+    bookingUrl: salon.bookingUrl,
+    notes: salon.notes,
+  };
 
   return (
     <div className="mx-auto max-w-5xl p-6">
+      {onboardingBusy && <AutoRefresh intervalMs={5000} />}
       <div className="mb-4 flex items-center justify-between">
         <Link href="/salons" className="text-sm text-slate-500 hover:text-slate-700">← Salons</Link>
         <Link href={`/salons/${id}/edit`} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50">
@@ -56,54 +93,114 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         {/* Left: info + status + onboarding */}
         <div className="space-y-5">
-          <div className={card}>
-            <h2 className="mb-3 text-sm font-semibold text-slate-900">Informations</h2>
-            <dl className="space-y-2 text-sm">
-              <Row label="Adresse" value={salon.address} />
-              <Row label="Arrondissement" value={salon.arrondissement} />
-              <Row label="Téléphone" value={salon.phone} />
-              <Row label="Instagram" value={salon.instagram ? `@${salon.instagram}` : null} />
-              <Row label="Réservation" value={salon.bookingTool !== "NONE" ? BOOKING_LABEL[salon.bookingTool] : null} />
-              <Row label="Note" value={salon.rating ? `${salon.rating}/5` : null} />
-              <Row label="Assigné à" value={salon.assignedTo?.name ?? salon.assignedTo?.email ?? null} />
-            </dl>
-          </div>
+          <SalonEditModal action={updateSalon.bind(null, id)} salon={editSalon}>
+            <div className={cn(card, "cursor-pointer transition hover:border-rose-300 hover:shadow-md")}>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold text-slate-900">Informations</h2>
+                <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600">Modifier</span>
+              </div>
+              <dl className="space-y-2 text-sm">
+                <Row label="Adresse" value={salon.address} />
+                <Row label="Arrondissement" value={salon.arrondissement} />
+                <Row label="Contact" value={salon.contactName} />
+                <Row label="Email" value={salon.contactEmail} />
+                <Row label="Téléphone" value={salon.phone} />
+                <Row
+                  label="Instagram"
+                  value={
+                    salon.instagram ? (
+                      <a
+                        href={`https://www.instagram.com/${salon.instagram}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-rose-600 hover:text-rose-700"
+                      >
+                        @{salon.instagram}
+                      </a>
+                    ) : null
+                  }
+                />
+                <Row label="Réservation" value={salon.bookingTool !== "NONE" ? BOOKING_LABEL[salon.bookingTool] : null} />
+                <Row label="Note" value={salon.rating ? `${salon.rating}/5` : null} />
+                <Row label="Assigné à" value={salon.assignedTo?.name ?? salon.assignedTo?.email ?? null} />
+                <Row label="Priorité" value={salon.priorityLabel} />
+                <Row label="Lead" value={salon.leadTemperature} />
+                <Row label="Source" value={salon.sourceLabel} />
+                <Row label="Compte" value={salon.accountStatusLabel} />
+                <Row label="Signature" value={formatDate(salon.signedAt)} />
+                <Row label="Activation" value={formatDate(salon.activatedAt)} />
+                <Row label="RDV" value={formatDate(salon.appointmentAt)} />
+                <Row label="Clients importés" value={salon.clientBaseImported ? `${salon.importedClientCount ?? 0}` : null} />
+              </dl>
+              {salon.airtableRecordUrl && (
+                <Link href={salon.airtableRecordUrl} className="mt-4 inline-flex text-sm font-medium text-rose-600 hover:text-rose-700">
+                  Ouvrir dans Airtable →
+                </Link>
+              )}
+            </div>
+          </SalonEditModal>
+
+          {(salon.notes || salon.objection) && (
+            <div className={card}>
+              <h2 className="mb-3 text-sm font-semibold text-slate-900">Notes Airtable</h2>
+              {salon.notes && <p className="whitespace-pre-wrap text-sm text-slate-600">{salon.notes}</p>}
+              {salon.objection && (
+                <div className="mt-3 rounded-lg bg-amber-50 p-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Objection</div>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-amber-900">{salon.objection}</p>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className={card}>
-            <h2 className="mb-3 text-sm font-semibold text-slate-900">Statut</h2>
+            <h2 className="mb-3 text-base font-semibold text-slate-950">Statut</h2>
             <form action={changeStatus.bind(null, id)} className="flex gap-2">
               <select name="status" defaultValue={salon.status} className={field}>
                 {STATUS_ORDER.map((s) => (
                   <option key={s} value={s}>{STATUS_LABEL[s]}</option>
                 ))}
               </select>
-              <button className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">OK</button>
+              <button className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800">OK</button>
             </form>
           </div>
 
           <div className={card}>
-            <h2 className="mb-1 text-sm font-semibold text-slate-900">Préparer le compte</h2>
-            <p className="mb-3 text-xs text-slate-500">Crée un compte Glaura (désactivé) via le moteur d&apos;onboarding.</p>
+            <h2 className="mb-1 text-base font-semibold text-slate-950">Préparer le compte</h2>
+            <p className="mb-4 text-sm text-slate-600">Crée un compte Glaura désactivé via le moteur d&apos;onboarding.</p>
             {latestJob ? (
-              <div className="mb-3 rounded-lg bg-slate-50 p-3 text-sm">
-                <div className="font-medium text-slate-700">Dernier job : {latestJob.status}</div>
-                {latestJob.loginEmail && <div className="text-slate-500">{latestJob.loginEmail}</div>}
+              <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="font-semibold text-slate-900">Dernier job</div>
+                  <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold ring-1", onboardingStatusStyle[latestJob.status])}>
+                    {onboardingStatusLabel[latestJob.status]}
+                  </span>
+                </div>
+                <div className="mt-1 text-xs text-slate-500">{new Date(latestJob.updatedAt).toLocaleString("fr-FR")}</div>
+                {latestJob.loginEmail && <div className="mt-2 font-medium text-slate-700">{latestJob.loginEmail}</div>}
                 {latestJob.serviceCount != null && (
-                  <div className="text-xs text-slate-400">{latestJob.serviceCount} services · {latestJob.agentCount ?? 0} agents · {latestJob.videoCount ?? 0} vidéos</div>
+                  <div className="mt-1 text-xs font-medium text-slate-500">{latestJob.serviceCount} services · {latestJob.agentCount ?? 0} agents · {latestJob.videoCount ?? 0} vidéos</div>
                 )}
+                {latestJob.error && <p className="mt-2 text-sm text-rose-700">{latestJob.error}</p>}
               </div>
             ) : null}
             <form action={triggerOnboarding.bind(null, id)}>
               <button
                 disabled={!canTrigger}
-                className="w-full rounded-lg bg-rose-500 px-3 py-2 text-sm font-medium text-white hover:bg-rose-600 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                className="w-full rounded-lg bg-rose-500 px-3 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-rose-600 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
               >
-                Préparer le compte
+                {onboardingBusy ? "Onboarding en cours" : "Préparer le compte"}
               </button>
             </form>
             {!canTrigger && (
               <p className="mt-2 text-xs text-slate-400">
-                {salon.status !== "SIGNE" ? "Disponible une fois le salon Signé." : "Réservé au commercial assigné ou à un admin."}
+                {!hasBookingUrl
+                  ? "Ajoute une URL de réservation avant de lancer l'onboarding."
+                  : onboardingBusy
+                    ? "Un job est déjà en cours."
+                    : salon.status !== "SIGNE"
+                    ? "Disponible une fois le salon Signé."
+                    : "Réservé au commercial assigné ou à un admin."}
               </p>
             )}
           </div>
@@ -119,8 +216,8 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
                   <option key={t} value={t}>{ACTIVITY_LABEL[t]}</option>
                 ))}
               </select>
-              <textarea name="notes" rows={2} className={field} placeholder="Notes…" />
-              <button className="w-full rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">Enregistrer</button>
+              <textarea name="notes" rows={2} className={textareaField} placeholder="Notes…" />
+              <button className="w-full rounded-lg bg-slate-950 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800">Enregistrer</button>
             </form>
           </div>
 
@@ -152,7 +249,7 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
             <form action={addReminder.bind(null, id)} className="space-y-2">
               <input name="title" className={field} placeholder="Relancer pour la démo…" required />
               <input name="dueAt" type="datetime-local" className={field} required />
-              <button className="w-full rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">Ajouter</button>
+              <button className="w-full rounded-lg bg-slate-950 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800">Ajouter</button>
             </form>
             <ul className="mt-4 space-y-2">
               {salon.reminders.map((r) => (
@@ -177,11 +274,16 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
   );
 }
 
-function Row({ label, value }: { label: string; value?: string | null }) {
+function Row({ label, value }: { label: string; value?: React.ReactNode | null }) {
   return (
     <div className="flex justify-between gap-3">
-      <dt className="text-slate-400">{label}</dt>
-      <dd className="text-right text-slate-700">{value ?? "—"}</dd>
+      <dt className="text-slate-500">{label}</dt>
+      <dd className="text-right font-medium text-slate-900">{value ?? "—"}</dd>
     </div>
   );
+}
+
+function formatDate(value?: Date | string | null): string | null {
+  if (!value) return null;
+  return new Date(value).toLocaleDateString("fr-FR");
 }

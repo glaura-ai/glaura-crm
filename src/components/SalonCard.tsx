@@ -16,10 +16,9 @@ function Stars({ rating }: { rating: number | null }) {
 
 export function SalonCard({ salon }: { salon: SalonListItem }) {
   return (
-    <Link
-      href={`/salons/${salon.id}`}
-      className="group relative block rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200 transition hover:shadow-md hover:ring-rose-200"
-    >
+    <div className="group relative rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200 transition hover:shadow-md hover:ring-rose-200">
+      <Link href={`/salons/${salon.id}`} aria-label={`Ouvrir ${salon.name}`} className="absolute inset-0 rounded-2xl" />
+
       {salon.type && (
         <span className={cn("absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-md text-xs font-bold text-white", TYPE_STYLE[salon.type])}>
           {salon.type}
@@ -38,15 +37,29 @@ export function SalonCard({ salon }: { salon: SalonListItem }) {
       </div>
 
       <p className="mt-2 text-sm text-slate-500">{salon.address ?? "Adresse inconnue"}</p>
+      {(salon.contactName || salon.assignedTo) && (
+        <p className="mt-1 truncate text-xs text-slate-400">
+          {salon.contactName ? `${salon.contactName}` : ""}
+          {salon.contactName && salon.assignedTo ? " · " : ""}
+          {salon.assignedTo?.name ?? salon.assignedTo?.email ?? ""}
+        </p>
+      )}
 
       <div className="mt-3 flex items-center justify-between text-sm">
         {salon.instagram ? (
-          <span className="text-rose-600">@{salon.instagram}</span>
+          <a
+            href={`https://www.instagram.com/${salon.instagram}`}
+            target="_blank"
+            rel="noreferrer"
+            className="relative z-10 font-medium text-rose-600 hover:text-rose-700 hover:underline"
+          >
+            @{salon.instagram}
+          </a>
         ) : (
           <span className="text-slate-300">—</span>
         )}
         <Stars rating={salon.rating} />
       </div>
-    </Link>
+    </div>
   );
 }

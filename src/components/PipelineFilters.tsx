@@ -27,7 +27,13 @@ function Chip({ active, href, children }: { active: boolean; href: string; child
   );
 }
 
-export function PipelineFilters({ params }: { params: Params }) {
+export function PipelineFilters({
+  params,
+  owners,
+}: {
+  params: Params;
+  owners: Array<{ id: string; name: string | null; email: string | null }>;
+}) {
   const TYPES = ["A", "B", "C", "D"] as const;
   return (
     <div className="space-y-2">
@@ -54,6 +60,15 @@ export function PipelineFilters({ params }: { params: Params }) {
           </Chip>
         ))}
       </div>
+      {owners.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {owners.map((owner) => (
+            <Chip key={owner.id} active={params.owner === owner.id} href={toggleHref(params, "owner", owner.id)}>
+              {owner.name ?? owner.email}
+            </Chip>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
