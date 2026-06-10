@@ -23,6 +23,9 @@
 # misc
 .DS_Store
 *.pem
+pwd.txt
+*cookies.txt
+/tmp/
 
 # debug
 npm-debug.log*
