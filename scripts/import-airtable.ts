@@ -113,10 +113,13 @@ function mapBookingTool(values: string[]): BookingTool {
   return "NONE";
 }
 
+// Owner email MUST match the email the commercial signs in with (Google OAuth),
+// otherwise the import creates a separate User from the one they log in as and
+// they see none of their salons. Keep in sync with ALLOWED_GOOGLE_EMAILS (auth.ts).
 function ownerFromBase(baseName: string): { name: string; email: string } {
   const normalized = normalize(baseName);
-  if (normalized.includes("namory")) return { name: "Namory", email: "namory@glaura.fr" };
-  if (normalized.includes("antoine")) return { name: "Antoine", email: "antoine@glaura.fr" };
+  if (normalized.includes("namory")) return { name: "Namory", email: "f.namory@glaura.fr" };
+  if (normalized.includes("antoine")) return { name: "Antoine", email: "a.ribeiro@glaura.fr" };
   const fallback = baseName.replace(/^crm\s+/i, "").trim() || "Commercial";
   return { name: fallback, email: `${slugify(fallback)}@glaura.fr` };
 }
