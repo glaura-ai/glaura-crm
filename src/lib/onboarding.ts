@@ -39,7 +39,7 @@ export type OnboardingHints = {
   bookingTool?: string | null;
 };
 
-const DEFAULT_COMMAND = "../run-onboard.sh";
+const DEFAULT_COMMAND = "./onboarding/run-onboard.sh";
 const DEFAULT_RESULT_DIR = "./tmp/onboarding-results";
 
 function resultStatus(status: string | undefined, exitCode: number | null) {
