@@ -93,6 +93,23 @@ export default async function DashboardPage({
         <MetricCard label="Signés" value={dashboard.statusCounts.SIGNE ?? 0} href={salonHref({ status: "SIGNE" })} valueClass="text-emerald-600" />
       </section>
 
+      {dashboard.dailyPriorities.length > 0 && (
+        <section className="mb-6">
+          <ActionBucket
+            accent="border-l-amber-400"
+            count={dashboard.dailyPriorities.length}
+            title="★ Priorité du jour"
+            empty="Aucune priorité du jour."
+            href={salonHref()}
+            items={dashboard.dailyPriorities.map((s) => ({
+              href: `/salons/${s.id}`,
+              title: s.name,
+              meta: [s.arrondissement, s.type ? `Type ${s.type}` : null, s.assignedTo?.name ?? s.assignedTo?.email].filter(Boolean).join(" · "),
+            }))}
+          />
+        </section>
+      )}
+
       <section className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <ActionBucket
           accent="border-l-indigo-500"

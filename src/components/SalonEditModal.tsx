@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { SalonForm, type SalonFormValues } from "@/components/SalonForm";
+import { SalonForm, type SalonFormValues, type AssignableUser } from "@/components/SalonForm";
 import { cn } from "@/lib/utils";
 
 function isInteractiveTarget(target: EventTarget | null) {
@@ -14,11 +14,15 @@ export function SalonEditModal({
   salon,
   children,
   className,
+  isAdmin = false,
+  assignableUsers = [],
 }: {
   action: (fd: FormData) => Promise<void>;
   salon: SalonFormValues;
   children: ReactNode;
   className?: string;
+  isAdmin?: boolean;
+  assignableUsers?: AssignableUser[];
 }) {
   const [open, setOpen] = useState(false);
   const titleId = useId();
@@ -87,7 +91,7 @@ export function SalonEditModal({
                 </button>
               </div>
               <div className="px-6 py-5">
-                <SalonForm action={action} salon={salon} />
+                <SalonForm action={action} salon={salon} isAdmin={isAdmin} assignableUsers={assignableUsers} />
               </div>
             </div>
           </div>,

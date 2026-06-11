@@ -84,3 +84,11 @@ export async function getSalonOwners() {
     select: { id: true, name: true, email: true },
   });
 }
+
+// Everyone a salon can be (re)assigned to — used by the admin-only assignee picker.
+export async function getAssignableUsers() {
+  return prisma.user.findMany({
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, email: true },
+  });
+}

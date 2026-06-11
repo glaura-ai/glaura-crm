@@ -4,8 +4,8 @@ import { auth } from "@/auth";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { EmailFollowUpForm } from "@/components/EmailFollowUpForm";
 import { SalonEditModal } from "@/components/SalonEditModal";
-import { getSalon } from "@/lib/salons";
-import { addReminder, changeStatus, completeReminder, logActivity, queueFollowUpEmail, triggerOnboarding, updateSalon } from "@/lib/actions";
+import { getSalon, getAssignableUsers } from "@/lib/salons";
+import { addReminder, changeStatus, completeReminder, logActivity, queueFollowUpEmail, setDailyPriority, triggerOnboarding, updateSalon } from "@/lib/actions";
 import {
   ACTIVITY_LABEL,
   BOOKING_LABEL,
@@ -52,10 +52,15 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const session = await auth();
   const me = session?.user;
-  const salon = await getSalon(id, me ? { id: me.id, role: me.role } : undefined);
+  const isAdmin = me?.role === "ADMIN";
+  const [salon, assignableUsers] = await Promise.all([
+    getSalon(id, me ? { id: me.id, role: me.role } : undefined),
+    isAdmin ? getAssignableUsers() : Promise.resolve([]),
+  ]);
   if (!salon) notFound();
 
-  const isAdmin = me?.role === "ADMIN";
+  const pinnedToday =
+    salon.priorityDate != null && new Date(salon.priorityDate).setHours(0, 0, 0, 0) === new Date().setHours(0, 0, 0, 0);
   const hasBookingUrl = !!salon.bookingUrl;
   const latestJob = salon.onboardingJobs[0];
   const onboardingBusy = latestJob?.status === "QUEUED" || latestJob?.status === "PROCESSING";
@@ -77,6 +82,7 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
     bookingTool: salon.bookingTool,
     bookingUrl: salon.bookingUrl,
     notes: salon.notes,
+    assignedToId: salon.assignedToId,
   };
 
   return (
@@ -84,9 +90,25 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
       {onboardingBusy && <AutoRefresh intervalMs={5000} />}
       <div className="mb-4 flex items-center justify-between">
         <Link href="/salons" className="text-sm text-slate-500 hover:text-slate-700">← Salons</Link>
-        <Link href={`/salons/${id}/edit`} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50">
-          Modifier
-        </Link>
+        <div className="flex items-center gap-2">
+          <form action={setDailyPriority.bind(null, id)}>
+            <button
+              type="submit"
+              title={pinnedToday ? "Retirer la priorité du jour" : "Marquer comme priorité du jour"}
+              className={cn(
+                "rounded-lg border px-3 py-1.5 text-sm font-medium transition",
+                pinnedToday
+                  ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+              )}
+            >
+              {pinnedToday ? "★ Priorité du jour" : "☆ Priorité du jour"}
+            </button>
+          </form>
+          <Link href={`/salons/${id}/edit`} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50">
+            Modifier
+          </Link>
+        </div>
       </div>
 
       <div className="mb-5 flex items-start gap-3">
@@ -107,7 +129,7 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         {/* Left: info + status + onboarding */}
         <div className="space-y-5">
-          <SalonEditModal action={updateSalon.bind(null, id)} salon={editSalon}>
+          <SalonEditModal action={updateSalon.bind(null, id)} salon={editSalon} isAdmin={isAdmin} assignableUsers={assignableUsers}>
             <div className={cn(card, "cursor-pointer transition hover:border-rose-300 hover:shadow-md")}>
               <div className="mb-3 flex items-center justify-between gap-3">
                 <h2 className="text-sm font-semibold text-slate-900">Informations</h2>

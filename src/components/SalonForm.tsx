@@ -26,11 +26,35 @@ export type SalonFormValues = Pick<
   | "bookingTool"
   | "bookingUrl"
   | "notes"
+  | "assignedToId"
 >;
 
-export function SalonForm({ action, salon }: { action: (fd: FormData) => Promise<void>; salon?: SalonFormValues | null }) {
+export type AssignableUser = { id: string; name: string | null; email: string };
+
+export function SalonForm({
+  action,
+  salon,
+  isAdmin = false,
+  assignableUsers = [],
+}: {
+  action: (fd: FormData) => Promise<void>;
+  salon?: SalonFormValues | null;
+  isAdmin?: boolean;
+  assignableUsers?: AssignableUser[];
+}) {
   return (
     <form action={action} className="space-y-4">
+      {isAdmin && assignableUsers.length > 0 && (
+        <div>
+          <label className={labelCls}>Assigné à</label>
+          <select name="assignedToId" defaultValue={salon?.assignedToId ?? ""} className={field}>
+            <option value="">— Non assigné</option>
+            {assignableUsers.map((u) => (
+              <option key={u.id} value={u.id}>{u.name ?? u.email}</option>
+            ))}
+          </select>
+        </div>
+      )}
       <div>
         <label className={labelCls}>Nom du salon *</label>
         <input name="name" required defaultValue={salon?.name ?? ""} className={field} placeholder="ex. Zazen Marais" />

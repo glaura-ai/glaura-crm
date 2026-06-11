@@ -36,6 +36,7 @@ export async function getDashboard(today = new Date(), ownerId?: string) {
     statusRows,
     visitsThisWeek,
     doneToday,
+    dailyPriorities,
     visitPriorities,
     dueReminders,
     staleFollowups,
@@ -46,6 +47,12 @@ export async function getDashboard(today = new Date(), ownerId?: string) {
     prisma.salon.groupBy({ by: ["status"], where: salonScope, _count: { _all: true } }),
     prisma.activity.count({ where: { ...activityScope, type: "VISITE", createdAt: { gte: weekStart, lte: dayEnd } } }),
     prisma.activity.count({ where: { ...activityScope, createdAt: { gte: dayStart, lte: dayEnd } } }),
+    prisma.salon.findMany({
+      where: { ...salonScope, priorityDate: { gte: dayStart, lte: dayEnd } },
+      orderBy: [{ type: "asc" }, { rating: "desc" }],
+      take: 10,
+      include: { assignedTo: { select: { name: true, email: true } } },
+    }),
     prisma.salon.findMany({
       where: { ...salonScope, status: "A_VISITER" },
       orderBy: [{ type: "asc" }, { rating: "desc" }, { updatedAt: "asc" }],
@@ -90,6 +97,7 @@ export async function getDashboard(today = new Date(), ownerId?: string) {
     visitsThisWeek,
     doneToday,
     actionsDue,
+    dailyPriorities,
     visitPriorities,
     dueReminders,
     staleFollowups,

@@ -147,6 +147,7 @@ model Salon {
 
   lastContactedAt     DateTime?
   nextActionAt        DateTime? // next planned touch — feeds "à relancer / priorités"
+  priorityDate        DateTime? // hand-pinned "priorité du jour" — surfaces on the assignee's dashboard for that day
   signedAt            DateTime?
   activatedAt         DateTime?
   appointmentAt       DateTime?
@@ -165,6 +166,7 @@ model Salon {
   @@index([metier])
   @@index([arrondissement])
   @@index([assignedToId])
+  @@index([assignedToId, priorityDate])
   @@index([nextActionAt])
   @@index([airtableBaseId])
 }
