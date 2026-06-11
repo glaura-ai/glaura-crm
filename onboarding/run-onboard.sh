@@ -21,6 +21,7 @@ fi
 # Run from this script's dir (glaura-crm/onboarding), which holds .claude/commands
 # so `claude` discovers the /onboard-* slash commands.
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUNNER_DIR="$(pwd)"
 
 # --- Onboarding-specific env (IG_COOKIES, etc.). The CRM spawns us with its own
 #     process env, which does NOT include these, so load them here explicitly.
@@ -99,6 +100,16 @@ claude -p "$PROMPT" \
 
 echo ""
 if [[ -f "$RESULT" ]]; then
+  # --- Completeness guardrail: annotate the result with any missing profile
+  #     fields (hours, location, services…) so an incomplete-but-"success" run
+  #     is surfaced in the CRM warnings instead of passing as fully prepared.
+  #     Runs from goglow-firebase/functions so firebase-admin resolves. ---
+  OWNER_ID="$(node -e "try{process.stdout.write(String((require('$RESULT').ownerId)||''))}catch(e){}" 2>/dev/null || true)"
+  FUNCTIONS_DIR="$RUNNER_DIR/../../goglow-firebase/functions"
+  if [[ -n "$OWNER_ID" && -d "$FUNCTIONS_DIR" ]]; then
+    ( cd "$FUNCTIONS_DIR" && node "$RUNNER_DIR/scripts/validate-profile.mjs" "$OWNER_ID" "$RESULT" ) || true
+  fi
+
   echo "===== RESULT ($RESULT) ====="
   cat "$RESULT"
   echo ""

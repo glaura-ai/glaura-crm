@@ -148,6 +148,21 @@ below overrides it.
    Only use `spLocation: null` when neither scraping, CRM hints, nor api-adresse can
    provide coordinates, and record that in `warnings[]`.
 
+8. **Opening hours are required work.** Every source has them (Planity/Treatwell/Acuity
+   show a per-day schedule; generic sites list them in a footer/sidebar). Extract the
+   per-day open/close times, then build the `timing` + `days` fields with the helper —
+   do NOT hand-compute epoch timestamps (that math is the bug that produced all-"Fermé"
+   profiles):
+   ```bash
+   node "$RUNNER_DIR/scripts/hours-to-timing.mjs" \
+     '{"Mon":"closed","Tue":"10:00-19:00","Wed":"10:00-19:00","Thu":"10:00-20:00","Fri":"10:00-20:00","Sat":"10:00-20:00","Sun":"closed"}'
+   # → {"timing":{"Sun":[],"Mon":[],"Tue":[…],…},"days":[2,3,4,5,6]}
+   ```
+   Pass the salon's local clock times (as displayed on the source). Write the helper's
+   `timing` and `days` verbatim onto `userProfile`. `$RUNNER_DIR` is exported by the
+   runner. Only skip if the source genuinely shows no hours — then record it in
+   `warnings[]`. Set agents' `days`/`timing` to match the salon (see source procedure).
+
 ## Result file schema
 
 ```json
