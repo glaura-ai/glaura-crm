@@ -59,7 +59,9 @@ fi
 MCP_CONFIG="$(mktemp -t mcp-playwright-XXXX.json)"
 PW_ARGS='["-y", "@playwright/mcp@latest", "--headless"]'
 if [[ -n "$STORAGE_STATE" ]]; then
-  PW_ARGS="[\"-y\", \"@playwright/mcp@latest\", \"--headless\", \"--storage-state\", \"$STORAGE_STATE\"]"
+  # --isolated is REQUIRED for --storage-state to be applied (otherwise the MCP
+  # uses a persistent, logged-out profile and ignores the cookies).
+  PW_ARGS="[\"-y\", \"@playwright/mcp@latest\", \"--headless\", \"--isolated\", \"--storage-state\", \"$STORAGE_STATE\"]"
 fi
 cat > "$MCP_CONFIG" <<JSON
 {

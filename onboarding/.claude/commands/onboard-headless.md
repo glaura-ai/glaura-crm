@@ -85,32 +85,43 @@ below overrides it.
    source of truth.
 
 5. **Instagram reels ARE part of headless onboarding — do not skip them.** If an
-   Instagram handle was found (or is derivable from the source), run the procedure's
-   "Upload Instagram Reels" step: collect reels, match them to services by caption, and
-   upload them via `uploadSalonVideos`. This is NOT optional in headless mode. Only skip
-   if no IG handle exists, or reels genuinely can't be fetched (no reels) — in which case
-   record the reason in `warnings[]` and continue. In headless mode, do **not** use
-   SnapInsta or any third-party downloader site.
+   Instagram handle was found (or is derivable from the source), pull a few reels and
+   seed them to the new account. This is NOT optional in headless mode. Only skip if no
+   IG handle exists, or reels genuinely can't be fetched — record the reason in
+   `warnings[]` and continue. Do **not** use SnapInsta or any third-party downloader.
 
    **The browser is launched already authenticated to Instagram** (the runner loads a
-   logged-in session via `--storage-state` from `IG_COOKIES`). So navigate to the
-   profile/reel pages as a logged-in user — they should NOT redirect to the login page.
-   If you DO land on `instagram.com/accounts/login` (session expired or not loaded),
-   record `Instagram reels skipped: session not authenticated` in `warnings[]` and
-   finish — do not attempt SnapInsta or other workarounds.
+   logged-in session via `--isolated --storage-state` from `IG_COOKIES`). So navigate to
+   the profile/reel pages as a logged-in user — they should NOT redirect to the login
+   page. If you DO land on `instagram.com/accounts/login` (session expired or not loaded),
+   record `Instagram reels skipped: session not authenticated` in `warnings[]` and finish.
 
-   First try Instagram's web profile endpoint:
+   **Step A — collect up to 3 video reels.** Fetch Instagram's web profile endpoint from
+   the page context (so session cookies are sent):
    `https://www.instagram.com/api/v1/users/web_profile_info/?username=<handle>` with
    headers `X-IG-App-ID: 936619743392459`, `X-ASBD-ID: 129477`,
-   `X-Requested-With: XMLHttpRequest`, and a normal browser `User-Agent` / profile
-   `Referer` (the authenticated session cookies are sent automatically). Read
-   `data.user.edge_owner_to_timeline_media.edges[]`, choose an item with `is_video: true`,
-   use its `shortcode`, caption, and direct `video_url`, then upload that MP4 with
-   `uploadSalonVideos`. If the endpoint does not expose `video_url`, fall back to direct
-   Instagram MP4 extraction from the reel page HTML. Upload at most one clearly matched
-   reel. If extraction does not produce a usable MP4 URL within 45 seconds, skip videos,
-   write a warning, and finish the result file. Report how many videos were uploaded in
-   `videoCount`.
+   `X-Requested-With: XMLHttpRequest`. From `data.user.edge_owner_to_timeline_media.edges[]`
+   take up to 3 nodes with `is_video: true`. For each collect: `instagramVideoId` =
+   `node.shortcode`, `caption` = `node.edge_media_to_caption.edges[0].node.text`,
+   `thumbnailUrl` = `node.thumbnail_src || node.display_url`, `timestamp` = ISO from
+   `node.taken_at_timestamp`, and `videoUrl` = `node.video_url`. If a node has no
+   `video_url`, open `https://www.instagram.com/reel/<shortcode>/` and read it from
+   `meta[property="og:video"]` or the `"video_url":"…"` field in the page HTML (unescape
+   `&`→`&`). Keep only reels with a non-empty `videoUrl`.
+
+   **Step B — seed them to Cloudflare R2.** POST the collected reels to the seed function
+   (do NOT use `uploadSalonVideos` — that targets the wrong storage). The function
+   downloads each MP4, uploads to R2, runs service detection, and writes `videos/{id}`:
+   ```bash
+   curl -s -X POST "$ONBOARDING_SEED_URL" \
+     -H "Authorization: Bearer $ONBOARDING_SEED_SECRET" \
+     -H "Content-Type: application/json" \
+     -d '{"uid":"<ownerId>","reels":[{"videoUrl":"…","caption":"…","instagramVideoId":"…","thumbnailUrl":"…","timestamp":"…"}]}'
+   ```
+   `<ownerId>` is the userProfile id you just created. `ONBOARDING_SEED_URL` and
+   `ONBOARDING_SEED_SECRET` are already in the environment. Read `data.synced` from the
+   JSON response and set `videoCount` to it. If the whole step fails, write a warning and
+   finish the result file — never block onboarding on reels.
 
 6. **Do not block on anything.** If a non-fatal sub-step fails (e.g. a few images or a
    few reels), log it in `warnings[]` and continue. Only abort if scraping yields no
