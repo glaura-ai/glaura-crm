@@ -100,7 +100,7 @@ export default async function DashboardPage({
             count={dashboard.dailyPriorities.length}
             title="★ Priorité du jour"
             empty="Aucune priorité du jour."
-            href={salonHref()}
+            href={salonHref({ prio: "today" })}
             items={dashboard.dailyPriorities.map((s) => ({
               href: `/salons/${s.id}`,
               title: s.name,

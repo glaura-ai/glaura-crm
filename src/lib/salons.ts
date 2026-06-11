@@ -12,8 +12,17 @@ export type SalonFilters = {
   type?: string;
   owner?: string;
   arr?: string;
+  prio?: string; // "today" → only salons pinned as priorité du jour
   q?: string;
 };
+
+function todayRange(): { gte: Date; lte: Date } {
+  const gte = new Date();
+  gte.setHours(0, 0, 0, 0);
+  const lte = new Date();
+  lte.setHours(23, 59, 59, 999);
+  return { gte, lte };
+}
 
 function scopedOwnerId(f: SalonFilters, viewer?: ViewerScope): string | undefined {
   if (!viewer) return f.owner;
@@ -30,6 +39,7 @@ export async function getSalons(f: SalonFilters, viewer?: ViewerScope) {
       ...(f.type ? { type: f.type as SalonType } : {}),
       ...(ownerId ? { assignedToId: ownerId } : {}),
       ...(f.arr ? { arrondissement: f.arr } : {}),
+      ...(f.prio === "today" ? { priorityDate: todayRange() } : {}),
       ...(q
         ? {
             OR: [
