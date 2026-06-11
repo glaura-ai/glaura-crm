@@ -190,24 +190,27 @@ export async function createSalon(fd: FormData) {
   redirect(`/salons/${salon.id}`);
 }
 
+function startOfToday(): Date {
+  const v = new Date();
+  v.setHours(0, 0, 0, 0);
+  return v;
+}
+
 export async function updateSalon(id: string, fd: FormData) {
   const me = await assertCanAccessSalon(id);
   const d = await parse(fd);
   // Reassignment is admin-only — enforced here, never trust the (hidden-for-reps) form field.
   const assignedToId = me.role === "ADMIN" ? optionalString(fd.get("assignedToId")) : undefined;
+  // "Priorité du jour" checkbox: present → pin for today, absent → clear.
+  const priorityDate = fd.has("priorityToday") ? startOfToday() : null;
   await prisma.salon.update({
     where: { id },
-    data: { ...d, slug: await uniqueSlug(d.name, id), ...(assignedToId ? { assignedToId } : {}) },
+    data: { ...d, slug: await uniqueSlug(d.name, id), priorityDate, ...(assignedToId ? { assignedToId } : {}) },
   });
   revalidatePath(`/salons/${id}`);
   revalidatePath("/salons");
+  revalidatePath("/dashboard");
   redirect(`/salons/${id}`);
-}
-
-function startOfToday(): Date {
-  const v = new Date();
-  v.setHours(0, 0, 0, 0);
-  return v;
 }
 
 // Toggle the "priorité du jour" pin. Pins for today, or clears if already pinned today.

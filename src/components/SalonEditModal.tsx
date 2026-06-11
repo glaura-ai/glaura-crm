@@ -16,6 +16,7 @@ export function SalonEditModal({
   className,
   isAdmin = false,
   assignableUsers = [],
+  pinnedToday = false,
 }: {
   action: (fd: FormData) => Promise<void>;
   salon: SalonFormValues;
@@ -23,6 +24,7 @@ export function SalonEditModal({
   className?: string;
   isAdmin?: boolean;
   assignableUsers?: AssignableUser[];
+  pinnedToday?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const titleId = useId();
@@ -91,7 +93,7 @@ export function SalonEditModal({
                 </button>
               </div>
               <div className="px-6 py-5">
-                <SalonForm action={action} salon={salon} isAdmin={isAdmin} assignableUsers={assignableUsers} />
+                <SalonForm action={action} salon={salon} isAdmin={isAdmin} assignableUsers={assignableUsers} pinnedToday={pinnedToday} />
               </div>
             </div>
           </div>,
