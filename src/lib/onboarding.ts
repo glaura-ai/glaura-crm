@@ -136,7 +136,7 @@ export async function startOnboardingJob(jobId: string, sourceUrl: string, hints
   await prisma.onboardingJob.update({ where: { id: jobId }, data: { status: "PROCESSING", startedAt } });
 
   const child = spawn(command, hintsPath ? [sourceUrl, resultPath, hintsPath] : [sourceUrl, resultPath], {
-    cwd: process.cwd(),
+    cwd: /*turbopackIgnore: true*/ process.cwd(),
     env: process.env,
     stdio: ["ignore", "pipe", "pipe"],
   });
