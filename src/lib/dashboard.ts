@@ -1,20 +1,9 @@
 import { prisma } from "@/lib/db";
+import { activeDailyPriorityDateFilter, endOfDay, startOfDay } from "@/lib/dailyPriority";
 import type { SalonStatus, SalonType } from "@/generated/prisma/enums";
 
 const TYPE_ORDER: SalonType[] = ["A", "B", "C", "D"];
 const FUNNEL_STATUSES: SalonStatus[] = ["A_VISITER", "VISITE_FAITE", "INTERESSE", "SIGNE"];
-
-function startOfDay(d: Date): Date {
-  const v = new Date(d);
-  v.setHours(0, 0, 0, 0);
-  return v;
-}
-
-function endOfDay(d: Date): Date {
-  const v = new Date(d);
-  v.setHours(23, 59, 59, 999);
-  return v;
-}
 
 function startOfWeek(d: Date): Date {
   const v = startOfDay(d);
@@ -48,8 +37,8 @@ export async function getDashboard(today = new Date(), ownerId?: string) {
     prisma.activity.count({ where: { ...activityScope, type: "VISITE", createdAt: { gte: weekStart, lte: dayEnd } } }),
     prisma.activity.count({ where: { ...activityScope, createdAt: { gte: dayStart, lte: dayEnd } } }),
     prisma.salon.findMany({
-      where: { ...salonScope, priorityDate: { gte: dayStart, lte: dayEnd } },
-      orderBy: [{ type: "asc" }, { rating: "desc" }],
+      where: { ...salonScope, priorityDate: activeDailyPriorityDateFilter(today) },
+      orderBy: [{ priorityDate: "asc" }, { type: "asc" }, { rating: "desc" }],
       take: 10,
       include: { assignedTo: { select: { name: true, email: true } } },
     }),

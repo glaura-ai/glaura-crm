@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import { isDailyPriorityActive, startOfDay } from "@/lib/dailyPriority";
 import { EMAIL_TEMPLATES } from "@/lib/emailTemplates";
 import { defaultEmailFrom } from "@/lib/email";
 import type { ActivityType, BookingTool, EmailTemplate, Metier, SalonStatus, SalonType } from "@/generated/prisma/enums";
@@ -190,19 +191,13 @@ export async function createSalon(fd: FormData) {
   redirect(`/salons/${salon.id}`);
 }
 
-function startOfToday(): Date {
-  const v = new Date();
-  v.setHours(0, 0, 0, 0);
-  return v;
-}
-
 export async function updateSalon(id: string, fd: FormData) {
   const me = await assertCanAccessSalon(id);
   const d = await parse(fd);
   // Reassignment is admin-only — enforced here, never trust the (hidden-for-reps) form field.
   const assignedToId = me.role === "ADMIN" ? optionalString(fd.get("assignedToId")) : undefined;
-  // "Priorité du jour" checkbox: present → pin for today, absent → clear.
-  const priorityDate = fd.has("priorityToday") ? startOfToday() : null;
+  // "Priorité du jour" checkbox: present → keep/pin for today, absent → clear.
+  const priorityDate = fd.has("priorityToday") ? startOfDay() : null;
   await prisma.salon.update({
     where: { id },
     data: { ...d, slug: await uniqueSlug(d.name, id), priorityDate, ...(assignedToId ? { assignedToId } : {}) },
@@ -213,24 +208,24 @@ export async function updateSalon(id: string, fd: FormData) {
   redirect(`/salons/${id}`);
 }
 
-// Toggle the "priorité du jour" pin. Pins for today, or clears if already pinned today.
+// Toggle the "priorité du jour" pin. Pins for today, or clears if already active.
 // Routes to the assignee's dashboard via the salon's assignedToId.
 export async function setDailyPriority(salonId: string) {
   await assertCanAccessSalon(salonId);
   const salon = await prisma.salon.findUnique({ where: { id: salonId }, select: { priorityDate: true } });
-  const today = startOfToday();
-  const pinnedToday =
-    salon?.priorityDate != null && new Date(salon.priorityDate).setHours(0, 0, 0, 0) === today.getTime();
-  await prisma.salon.update({ where: { id: salonId }, data: { priorityDate: pinnedToday ? null : today } });
+  const priorityActive = isDailyPriorityActive(salon?.priorityDate);
+  await prisma.salon.update({ where: { id: salonId }, data: { priorityDate: priorityActive ? null : startOfDay() } });
   revalidatePath(`/salons/${salonId}`);
   revalidatePath("/dashboard");
+  revalidatePath("/salons");
 }
 
 export async function changeStatus(salonId: string, fd: FormData) {
   await assertCanAccessSalon(salonId);
-  await prisma.salon.update({ where: { id: salonId }, data: { status: fd.get("status") as SalonStatus } });
+  await prisma.salon.update({ where: { id: salonId }, data: { status: fd.get("status") as SalonStatus, priorityDate: null } });
   revalidatePath(`/salons/${salonId}`);
   revalidatePath("/salons");
+  revalidatePath("/dashboard");
 }
 
 export async function logActivity(salonId: string, fd: FormData) {
@@ -238,8 +233,10 @@ export async function logActivity(salonId: string, fd: FormData) {
   const type = fd.get("type") as ActivityType;
   const notes = (fd.get("notes") || "").toString().trim();
   await prisma.activity.create({ data: { salonId, userId: me.id, type, notes: notes || null } });
-  await prisma.salon.update({ where: { id: salonId }, data: { lastContactedAt: new Date() } });
+  await prisma.salon.update({ where: { id: salonId }, data: { lastContactedAt: new Date(), priorityDate: null } });
   revalidatePath(`/salons/${salonId}`);
+  revalidatePath("/salons");
+  revalidatePath("/dashboard");
 }
 
 export async function addReminder(salonId: string, fd: FormData) {
@@ -248,14 +245,21 @@ export async function addReminder(salonId: string, fd: FormData) {
   const dueAt = new Date((fd.get("dueAt") || "").toString());
   if (!title || isNaN(dueAt.getTime())) return;
   await prisma.reminder.create({ data: { salonId, userId: me.id, title, dueAt } });
-  await prisma.salon.update({ where: { id: salonId }, data: { nextActionAt: dueAt } });
+  await prisma.salon.update({ where: { id: salonId }, data: { nextActionAt: dueAt, priorityDate: null } });
   revalidatePath(`/salons/${salonId}`);
+  revalidatePath("/salons");
+  revalidatePath("/dashboard");
 }
 
 export async function completeReminder(reminderId: string, salonId: string) {
   await assertCanAccessSalon(salonId);
-  await prisma.reminder.update({ where: { id: reminderId }, data: { done: true, doneAt: new Date() } });
+  await prisma.$transaction([
+    prisma.reminder.update({ where: { id: reminderId }, data: { done: true, doneAt: new Date() } }),
+    prisma.salon.update({ where: { id: salonId }, data: { priorityDate: null } }),
+  ]);
   revalidatePath(`/salons/${salonId}`);
+  revalidatePath("/salons");
+  revalidatePath("/dashboard");
 }
 
 const emailJobSchema = z.object({
@@ -287,8 +291,10 @@ export async function queueFollowUpEmail(salonId: string, fd: FormData) {
     },
   });
 
-  await prisma.salon.update({ where: { id: salonId }, data: { lastContactedAt: new Date() } });
+  await prisma.salon.update({ where: { id: salonId }, data: { lastContactedAt: new Date(), priorityDate: null } });
   revalidatePath(`/salons/${salonId}`);
+  revalidatePath("/salons");
+  revalidatePath("/dashboard");
 }
 
 // Account-readiness: queue and start an onboarding job for the VPS engine.
@@ -303,15 +309,18 @@ export async function triggerOnboarding(salonId: string) {
   if (!isAdmin && salon.status !== "SIGNE") throw new Error("Le salon doit être au statut Signé");
   if (!salon.bookingUrl) throw new Error("Aucune URL de réservation à scraper");
 
-  const job = await prisma.onboardingJob.create({
-    data: {
-      salonId,
-      requestedById: user.id,
-      sourceUrl: salon.bookingUrl,
-      sourceType: salon.bookingTool.toLowerCase(),
-      status: "QUEUED",
-    },
-  });
+  const [job] = await prisma.$transaction([
+    prisma.onboardingJob.create({
+      data: {
+        salonId,
+        requestedById: user.id,
+        sourceUrl: salon.bookingUrl,
+        sourceType: salon.bookingTool.toLowerCase(),
+        status: "QUEUED",
+      },
+    }),
+    prisma.salon.update({ where: { id: salonId }, data: { priorityDate: null } }),
+  ]);
   const { startOnboardingJob } = await import("@/lib/onboarding");
   await startOnboardingJob(job.id, salon.bookingUrl, {
     crmSalonId: salon.id,
@@ -329,4 +338,6 @@ export async function triggerOnboarding(salonId: string) {
     bookingTool: salon.bookingTool,
   });
   revalidatePath(`/salons/${salonId}`);
+  revalidatePath("/salons");
+  revalidatePath("/dashboard");
 }

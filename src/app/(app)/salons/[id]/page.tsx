@@ -6,6 +6,7 @@ import { EmailFollowUpForm } from "@/components/EmailFollowUpForm";
 import { SalonEditModal } from "@/components/SalonEditModal";
 import { getSalon, getAssignableUsers } from "@/lib/salons";
 import { addReminder, changeStatus, completeReminder, logActivity, queueFollowUpEmail, setDailyPriority, triggerOnboarding, updateSalon } from "@/lib/actions";
+import { isDailyPriorityActive } from "@/lib/dailyPriority";
 import {
   ACTIVITY_LABEL,
   BOOKING_LABEL,
@@ -59,8 +60,7 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
   ]);
   if (!salon) notFound();
 
-  const pinnedToday =
-    salon.priorityDate != null && new Date(salon.priorityDate).setHours(0, 0, 0, 0) === new Date().setHours(0, 0, 0, 0);
+  const priorityActive = isDailyPriorityActive(salon.priorityDate);
   const hasBookingUrl = !!salon.bookingUrl;
   const latestJob = salon.onboardingJobs[0];
   const onboardingBusy = latestJob?.status === "QUEUED" || latestJob?.status === "PROCESSING";
@@ -94,15 +94,15 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
           <form action={setDailyPriority.bind(null, id)}>
             <button
               type="submit"
-              title={pinnedToday ? "Retirer la priorité du jour" : "Marquer comme priorité du jour"}
+              title={priorityActive ? "Retirer la priorité du jour" : "Marquer comme priorité du jour"}
               className={cn(
                 "rounded-lg border px-3 py-1.5 text-sm font-medium transition",
-                pinnedToday
+                priorityActive
                   ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
                   : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
               )}
             >
-              {pinnedToday ? "★ Priorité du jour" : "☆ Priorité du jour"}
+              {priorityActive ? "★ Priorité du jour" : "☆ Priorité du jour"}
             </button>
           </form>
           <Link href={`/salons/${id}/edit`} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50">
@@ -129,7 +129,7 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         {/* Left: info + status + onboarding */}
         <div className="space-y-5">
-          <SalonEditModal action={updateSalon.bind(null, id)} salon={editSalon} isAdmin={isAdmin} assignableUsers={assignableUsers} pinnedToday={pinnedToday}>
+          <SalonEditModal action={updateSalon.bind(null, id)} salon={editSalon} isAdmin={isAdmin} assignableUsers={assignableUsers} priorityActive={priorityActive}>
             <div className={cn(card, "cursor-pointer transition hover:border-rose-300 hover:shadow-md")}>
               <div className="mb-3 flex items-center justify-between gap-3">
                 <h2 className="text-sm font-semibold text-slate-900">Informations</h2>

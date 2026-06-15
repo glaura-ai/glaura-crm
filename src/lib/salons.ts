@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { activeDailyPriorityDateFilter } from "@/lib/dailyPriority";
 import type { Metier, SalonStatus, SalonType } from "@/generated/prisma/enums";
 
 export type ViewerScope = {
@@ -12,17 +13,9 @@ export type SalonFilters = {
   type?: string;
   owner?: string;
   arr?: string;
-  prio?: string; // "today" → only salons pinned as priorité du jour
+  prio?: string; // "today" → active daily priorities, including carried-over pins
   q?: string;
 };
-
-function todayRange(): { gte: Date; lte: Date } {
-  const gte = new Date();
-  gte.setHours(0, 0, 0, 0);
-  const lte = new Date();
-  lte.setHours(23, 59, 59, 999);
-  return { gte, lte };
-}
 
 function scopedOwnerId(f: SalonFilters, viewer?: ViewerScope): string | undefined {
   if (!viewer) return f.owner;
@@ -39,7 +32,7 @@ export async function getSalons(f: SalonFilters, viewer?: ViewerScope) {
       ...(f.type ? { type: f.type as SalonType } : {}),
       ...(ownerId ? { assignedToId: ownerId } : {}),
       ...(f.arr ? { arrondissement: f.arr } : {}),
-      ...(f.prio === "today" ? { priorityDate: todayRange() } : {}),
+      ...(f.prio === "today" ? { priorityDate: activeDailyPriorityDateFilter() } : {}),
       ...(q
         ? {
             OR: [

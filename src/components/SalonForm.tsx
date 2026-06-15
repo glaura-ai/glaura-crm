@@ -36,13 +36,13 @@ export function SalonForm({
   salon,
   isAdmin = false,
   assignableUsers = [],
-  pinnedToday = false,
+  priorityActive = false,
 }: {
   action: (fd: FormData) => Promise<void>;
   salon?: SalonFormValues | null;
   isAdmin?: boolean;
   assignableUsers?: AssignableUser[];
-  pinnedToday?: boolean;
+  priorityActive?: boolean;
 }) {
   return (
     <form action={action} className="space-y-4">
@@ -60,8 +60,8 @@ export function SalonForm({
 
       {salon && (
         <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2.5 text-sm font-medium text-amber-800 has-[:checked]:border-amber-300 has-[:checked]:bg-amber-50">
-          <input type="checkbox" name="priorityToday" defaultChecked={pinnedToday} className="h-4 w-4 accent-amber-500" />
-          ★ Priorité du jour <span className="font-normal text-amber-700/80">— mettre en avant sur le tableau de bord du commercial assigné aujourd&apos;hui</span>
+          <input type="checkbox" name="priorityToday" defaultChecked={priorityActive} className="h-4 w-4 accent-amber-500" />
+          ★ Priorité du jour <span className="font-normal text-amber-700/80">— reste visible jusqu&apos;à une action ou une mise à jour</span>
         </label>
       )}
       <div>
