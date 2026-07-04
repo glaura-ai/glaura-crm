@@ -5,7 +5,10 @@ import type { Readable } from "node:stream";
 import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
 
-type OnboardingResult = {
+// Exported so the in-process onboarding pipeline (src/lib/onboarding/create-account.ts,
+// P3b onward) can build a result object that structurally satisfies the same
+// contract this file expects from the (legacy, spawned-subprocess) result JSON file.
+export type OnboardingResult = {
   status?: string;
   ownerId?: string | null;
   email?: string | null;
@@ -19,6 +22,8 @@ type OnboardingResult = {
   agentCount?: number | null;
   videoCount?: number | null;
   sourceType?: string | null;
+  /** The salon booking-page URL that was onboarded. Not persisted by this file's DB writes today. */
+  url?: string | null;
   warnings?: unknown;
   error?: string | null;
 };
