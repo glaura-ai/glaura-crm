@@ -212,6 +212,7 @@ const fakeExtract: SalonExtract = {
     {
       service_name: "Manucure",
       subcategory_name: "Onglerie",
+      category: "Nails",
       service_details: "Pose vernis classique",
       service_price: 25,
       duration_minutes: 45,
