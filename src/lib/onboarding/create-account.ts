@@ -73,7 +73,6 @@ export interface CreateAccountResult extends OnboardingResult {
   lng: number | null;
   serviceCount: number;
   agentCount: number;
-  videoCount: number;
   sourceType: string;
   url: string;
   warnings: string[];
@@ -91,8 +90,8 @@ type UploadServicesResponse = {
   };
 };
 
-function failure(partial: Omit<CreateAccountResult, "status" | "agentCount" | "videoCount">): CreateAccountResult {
-  return { status: "failed", agentCount: 0, videoCount: 0, ...partial };
+function failure(partial: Omit<CreateAccountResult, "status" | "agentCount">): CreateAccountResult {
+  return { status: "failed", agentCount: 0, ...partial };
 }
 
 /**
@@ -239,7 +238,6 @@ export async function createDisabledSalonAccount(
           lng: data.spLocation?.longitude ?? null,
           serviceCount: 0,
           agentCount: 0,
-          videoCount: 0,
           sourceType: source.sourceType,
           url: source.url,
           warnings: [],
@@ -402,7 +400,6 @@ export async function createDisabledSalonAccount(
     lng,
     serviceCount,
     agentCount: 0,
-    videoCount: 0,
     sourceType: source.sourceType,
     url: source.url,
     warnings,

@@ -248,7 +248,6 @@ model OnboardingJob {
   loginPassword String? // engine-generated; reveal is audit-logged in UI
   serviceCount  Int?
   agentCount    Int?
-  videoCount    Int?
   warnings      Json?
   error         String? @db.Text
 

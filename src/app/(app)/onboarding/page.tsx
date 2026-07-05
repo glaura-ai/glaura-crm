@@ -90,7 +90,7 @@ export default async function OnboardingMonitorPage({
                       <div className="text-xs text-slate-400">{job.eventCount} events</div>
                     </td>
                     <td className="px-3 py-3 text-slate-600">
-                      {job.serviceCount ?? 0} / {job.agentCount ?? 0} / {job.videoCount ?? 0}
+                      {job.serviceCount ?? 0} / {job.agentCount ?? 0}
                     </td>
                     <td className="px-3 py-3 text-slate-600">
                       <div className="truncate">{job.requestedBy?.name ?? job.requestedBy?.email ?? "-"}</div>

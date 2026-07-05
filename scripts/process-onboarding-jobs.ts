@@ -190,7 +190,6 @@ async function finalizeJob(
       sourceType: result.sourceType ?? null,
       serviceCount: result.serviceCount ?? null,
       agentCount: result.agentCount ?? null,
-      videoCount: result.videoCount ?? null,
       warnings: result.warnings.length ? result.warnings : undefined,
       error: result.error ?? null,
     },

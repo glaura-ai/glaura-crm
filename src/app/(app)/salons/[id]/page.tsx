@@ -215,7 +215,7 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
                 <div className="mt-1 text-xs text-slate-500">{new Date(latestJob.updatedAt).toLocaleString("fr-FR")}</div>
                 {latestJob.loginEmail && <div className="mt-2 font-medium text-slate-700">{latestJob.loginEmail}</div>}
                 {latestJob.serviceCount != null && (
-                  <div className="mt-1 text-xs font-medium text-slate-500">{latestJob.serviceCount} services · {latestJob.agentCount ?? 0} agents · {latestJob.videoCount ?? 0} vidéos</div>
+                  <div className="mt-1 text-xs font-medium text-slate-500">{latestJob.serviceCount} services · {latestJob.agentCount ?? 0} agents</div>
                 )}
                 {latestJob.error && <p className="mt-2 text-sm text-rose-700">{latestJob.error}</p>}
               </div>
