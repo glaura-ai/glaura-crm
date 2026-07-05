@@ -309,7 +309,14 @@ export async function triggerOnboarding(salonId: string) {
   if (!isAdmin && salon.status !== "SIGNE") throw new Error("Le salon doit être au statut Signé");
   if (!salon.bookingUrl) throw new Error("Aucune URL de réservation à scraper");
 
-  const [job] = await prisma.$transaction([
+  // Enqueue-only: the out-of-process onboarding worker
+  // (scripts/process-onboarding-jobs.ts) polls QUEUED rows and runs the
+  // expand → extract → create-account pipeline. It reads everything it needs
+  // (booking URL + CRM hints) from the salon row itself, so this action just
+  // creates the job and returns. (The old inline `startOnboardingJob` spawn
+  // was the stuck-QUEUED bug: it shelled out to a `claude` binary absent from
+  // the Docker image.)
+  await prisma.$transaction([
     prisma.onboardingJob.create({
       data: {
         salonId,
@@ -321,22 +328,6 @@ export async function triggerOnboarding(salonId: string) {
     }),
     prisma.salon.update({ where: { id: salonId }, data: { priorityDate: null } }),
   ]);
-  const { startOnboardingJob } = await import("@/lib/onboarding");
-  await startOnboardingJob(job.id, salon.bookingUrl, {
-    crmSalonId: salon.id,
-    salonName: salon.name,
-    instagram: salon.instagram,
-    instagramHandle: salon.instagram,
-    address: salon.address,
-    lat: salon.lat,
-    lng: salon.lng,
-    latitude: salon.lat,
-    longitude: salon.lng,
-    phone: salon.phone,
-    contactName: salon.contactName,
-    contactEmail: salon.contactEmail,
-    bookingTool: salon.bookingTool,
-  });
   revalidatePath(`/salons/${salonId}`);
   revalidatePath("/salons");
   revalidatePath("/dashboard");
