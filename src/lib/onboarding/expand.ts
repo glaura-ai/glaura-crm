@@ -291,7 +291,18 @@ export async function expandSalonPage(url: string, opts: ExpandOptions = {}): Pr
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const headless = opts.headless ?? true;
 
-  const browser = await chromium.launch({ headless });
+  // In the Docker image we install chromium via apk (Playwright's own bundled
+  // download is skipped by `npm ci --ignore-scripts`) and point Playwright at
+  // it with PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH. Locally the env is unset, so
+  // Playwright uses its bundled browser. When running against a system chromium
+  // inside a container we also need --no-sandbox (non-root user, no user
+  // namespaces) and --disable-dev-shm-usage (small /dev/shm).
+  const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?.trim() || undefined;
+  const browser = await chromium.launch({
+    headless,
+    executablePath,
+    args: executablePath ? ["--no-sandbox", "--disable-dev-shm-usage"] : undefined,
+  });
   try {
     return await withOverallTimeout(runExpansion(browser, url, sourceType), timeoutMs, "expandSalonPage");
   } finally {

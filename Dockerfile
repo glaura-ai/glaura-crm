@@ -22,6 +22,15 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
+# The onboarding worker (scripts/process-onboarding-jobs.ts) drives headless
+# chromium via Playwright to expand salon booking pages. Playwright's bundled
+# browser is never downloaded (deps stage runs `npm ci --ignore-scripts`), so
+# install the system chromium from apk and point Playwright at it. Harmless for
+# the Next.js server, which shares this image but never launches a browser.
+RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
 RUN addgroup --system --gid 1001 nodejs \
   && adduser --system --uid 1001 nextjs
 

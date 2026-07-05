@@ -13,7 +13,9 @@
     "db:seed": "tsx prisma/seed.ts",
     "import:airtable": "tsx scripts/import-airtable.ts",
     "email:jobs": "tsx scripts/process-email-jobs.ts",
-    "email:worker": "tsx scripts/process-email-jobs.ts --loop"
+    "email:worker": "tsx scripts/process-email-jobs.ts --loop",
+    "onboard:jobs": "tsx scripts/process-onboarding-jobs.ts",
+    "onboard:worker": "tsx scripts/process-onboarding-jobs.ts --loop"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
