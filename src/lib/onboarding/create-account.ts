@@ -54,6 +54,7 @@ import {
 import type { SalonExtract } from "./extract";
 import { geocode } from "./geocode";
 import { hoursToTiming } from "./hours";
+import { rehostSalonImages } from "./images";
 import type { OnboardingHints, OnboardingOverrides, OnboardingResult } from "@/lib/onboarding";
 
 const EMAIL_DOMAIN = "glaura.fr";
@@ -511,6 +512,11 @@ export async function createDisabledSalonAccount(
     });
   }
 
+  // (e.1) Re-host salon images into the EU media bucket (external Planity CDN
+  // URLs don't render in the apps). Non-fatal — a failure just leaves the
+  // gallery empty with a warning.
+  const { profileImg, salonImages } = await rehostSalonImages(uid, extract.salon.images, Date.now(), warnings);
+
   // (f) userProfile write.
   try {
     const searchNameList = buildSearchNameList(name, slug, base);
@@ -527,6 +533,8 @@ export async function createDisabledSalonAccount(
       crmSourceUrl: source.url,
       enable: overrides?.enable ?? false,
       deposit: overrides?.deposit ?? null,
+      profileImg,
+      salonImages,
     });
 
     // P3a's `now` stand-in must be replaced with the real server timestamp

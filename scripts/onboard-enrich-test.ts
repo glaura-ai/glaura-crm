@@ -135,10 +135,12 @@ check("createdAt descends from now", reviews.reviews[0].createdAt.getTime() > re
 const profile = buildUserProfile(extract, {
   uid: "u1", email: "fhcpro7@gmail.com", companyUserName: "fhc", timing, days,
   searchNameList: [], lat: 48.8, lng: 2.3, crmSourceUrl: "url", enable: true, deposit: 30,
+  profileImg: "https://storage.googleapis.com/glaura-user-media-eu/profile_images/u1_1.jpg",
+  salonImages: ["https://storage.googleapis.com/glaura-user-media-eu/salon_images/u1/0-1.jpg"],
 });
 check("enable=true flips enable/isActive/available", profile.enable && profile.isActive && profile.available);
 check("deposit written to spdeposit + depositPercentage", profile.spdeposit === 30 && profile.depositPercentage === 30);
-check("profileImg = first image, salon_images = gallery", profile.profileImg === "https://img/main.jpg" && profile.salon_images === "https://img/main.jpg,https://img/g1.jpg");
+check("profileImg from ctx (re-hosted); salon_images is an array", profile.profileImg.includes("glaura-user-media-eu") && Array.isArray(profile.salon_images) && profile.salon_images.length === 1);
 
 const disabled = buildUserProfile(extract, {
   uid: "u2", email: "x@glaura.fr", companyUserName: "x", timing, days, searchNameList: [], lat: null, lng: null, crmSourceUrl: "url",

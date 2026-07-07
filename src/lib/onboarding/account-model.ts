@@ -172,6 +172,10 @@ export interface BuildUserProfileContext {
   enable?: boolean | null;
   /** Booking deposit percentage (0–100) → `spdeposit`/`depositPercentage`. */
   deposit?: number | null;
+  /** Re-hosted main picture URL (EU media bucket); "" when none (see images.ts). */
+  profileImg?: string | null;
+  /** Re-hosted gallery URLs (EU media bucket), in order. */
+  salonImages?: string[] | null;
   /**
    * Injected clock, so this function stays pure/unit-testable. P3b's actual
    * Firestore write MUST replace `createdAt`/`updatedAt` with
@@ -206,7 +210,8 @@ export interface UserProfile {
   platform: string;
   loginType: string;
   salonBio: string;
-  salon_images: string;
+  /** Gallery image URLs — an ARRAY (the app reads `List<String>.from(salon_images)`). */
+  salon_images: string[];
   /** Booking deposit percentage (0–100), read by the app as `depositPercentage ?? deposit ?? spdeposit`. */
   spdeposit: number;
   depositPercentage: number;
@@ -261,15 +266,16 @@ export function buildUserProfile(extract: SalonExtract, ctx: BuildUserProfileCon
     // admin.firestore.FieldValue.serverTimestamp() at write time.
     createdAt: now,
     updatedAt: now,
-    // Main salon picture = first scraped image; gallery = the full list below.
-    profileImg: extract.salon.images[0] ?? "",
+    // Re-hosted EU-bucket URLs (see images.ts); external Planity CDN URLs are
+    // never stored — the apps' cdnImageUrl won't render them.
+    profileImg: ctx.profileImg ?? "",
     avg_ratting: 0,
     total_review: 0,
     platform: "web",
     loginType: "email",
     salonBio: extract.salon.bio ?? "",
-    // Comma-joined STRING (not an array) — matches the live userProfile shape.
-    salon_images: extract.salon.images.join(","),
+    // ARRAY of re-hosted gallery URLs (the app reads salon_images as a list).
+    salon_images: ctx.salonImages ?? [],
     spdeposit: ctx.deposit ?? 0,
     depositPercentage: ctx.deposit ?? 0,
     days: ctx.days,
