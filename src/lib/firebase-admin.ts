@@ -17,6 +17,15 @@
 import { applicationDefault, getApps, initializeApp, type App } from "firebase-admin/app";
 import { getAuth as getAuthForApp, type Auth } from "firebase-admin/auth";
 import { getFirestore as getFirestoreForApp, type Firestore } from "firebase-admin/firestore";
+import { getStorage as getStorageForApp } from "firebase-admin/storage";
+
+/**
+ * EU user-media bucket the apps now read/write salon + profile images from
+ * (see the goglow apps' `user_media_storage.dart` → `gs://glaura-user-media-eu`).
+ * Onboarding must upload here — the legacy US `beauty-984c8.appspot.com` bucket
+ * is the old convention that predates the EU media migration.
+ */
+export const MEDIA_BUCKET = "glaura-user-media-eu";
 
 let cachedApp: App | null = null;
 
@@ -37,4 +46,9 @@ export function getAuth(): Auth {
 /** Firestore client for the `beauty-984c8` project. */
 export function getDb(): Firestore {
   return getFirestoreForApp(getAdmin());
+}
+
+/** The EU user-media bucket ([MEDIA_BUCKET]) for salon/profile image uploads. */
+export function getMediaBucket() {
+  return getStorageForApp(getAdmin()).bucket(MEDIA_BUCKET);
 }

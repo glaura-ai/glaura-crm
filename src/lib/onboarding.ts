@@ -29,6 +29,27 @@ export type OnboardingResult = {
   error?: string | null;
 };
 
+/**
+ * Per-job onboarding overrides (P6 — full-enrichment pipeline). Absent/empty
+ * means the legacy default: a DISABLED account with a generated
+ * `<slug>@glaura.fr` email and no agents/reviews/deposit. Supplied per job via
+ * the `OnboardingJob.config` JSON column so existing salons are unaffected.
+ */
+export type OnboardingOverrides = {
+  /** Firebase Auth email to use instead of the generated `<slug>@glaura.fr`. */
+  loginEmail?: string | null;
+  /** Firebase Auth password to use instead of the random generated one. */
+  loginPassword?: string | null;
+  /** When true, the account is created LIVE (enable/isActive/available = true). */
+  enable?: boolean | null;
+  /** Booking deposit percentage (0–100) written to `spdeposit`/`depositPercentage`. */
+  deposit?: number | null;
+  /** Number of synthesized agents to create (each assigned to all services). */
+  agentCount?: number | null;
+  /** Total number of 5★ reviews to end up with (real Planity reviews first, then filled). */
+  reviewTarget?: number | null;
+};
+
 export type OnboardingHints = {
   crmSalonId?: string | null;
   salonName?: string | null;
