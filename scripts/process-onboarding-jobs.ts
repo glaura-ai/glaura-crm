@@ -31,6 +31,7 @@ const pollMs = Math.max(5, Number(process.env.ONBOARDING_JOB_POLL_SECONDS || 60)
 
 type Prisma = PrismaClient;
 type OnboardingHints = import("../src/lib/onboarding").OnboardingHints;
+type OnboardingOverrides = import("../src/lib/onboarding").OnboardingOverrides;
 
 // The env-dependent modules (Prisma reads DATABASE_URL at construction; the
 // pipeline pulls in firebase-admin / Anthropic / playwright) are imported
@@ -238,19 +239,29 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
       },
     });
 
-    // 3. Create the DISABLED salon account (Auth + userProfile + services).
+    // 3. Create the salon account (Auth + userProfile + services + enrichment).
+    // Per-job `config` (JSON column) carries P6 overrides — login creds, enable
+    // flag, deposit, agent/review targets. Absent → legacy disabled behavior.
+    const overrides = (job.config ?? undefined) as OnboardingOverrides | undefined;
     const result = await pipeline.createDisabledSalonAccount(extract, buildHints(job.salon), {
       url: sourceUrl,
       sourceType: expanded.sourceType,
-    });
+    }, overrides);
     if (result.warnings.length) {
       await emit("stderr", { type: "warnings", level: "warn", text: result.warnings.join("\n"), data: result.warnings });
     }
     await emit("system", {
       type: "account_created",
       subtype: result.status,
-      text: `${result.status}: ${result.email ?? "—"} (${result.serviceCount} service(s))`,
-      data: { status: result.status, ownerId: result.ownerId, email: result.email, serviceCount: result.serviceCount },
+      text: `${result.status}: ${result.email ?? "—"} (${result.serviceCount} service(s), ${result.agentCount} agent(s), ${result.reviewCount} review(s))`,
+      data: {
+        status: result.status,
+        ownerId: result.ownerId,
+        email: result.email,
+        serviceCount: result.serviceCount,
+        agentCount: result.agentCount,
+        reviewCount: result.reviewCount,
+      },
     });
 
     await finalizeJob(prisma, pipeline.encrypt, job.id, job.salonId, startedAt, result);

@@ -87,7 +87,33 @@ export const SalonExtractSchema = z.object({
   reviews: z.array(ReviewItemSchema).nullable().optional(),
 });
 
-export type SalonExtract = z.infer<typeof SalonExtractSchema>;
+/**
+ * A per-service option ("variant") — for Planity this is a "Finition …" or
+ * "Supplément …" row that shares a subcategory with the base service. These
+ * are NOT part of the Haiku schema: they're parsed deterministically from the
+ * page DOM (see `extractPlanityOptionGraph`) and merged onto the Haiku result
+ * in `extractSalon`. Price/duration are the option row's OWN values; the
+ * downstream builder combines them with the base service (base price already
+ * includes the default finition, e.g. "séchage inclus").
+ */
+export type ServiceOption = {
+  name: string;
+  price: number;
+  duration_minutes: number | null;
+};
+
+/** A Haiku-extracted service, enriched with deterministic options + page order. */
+export type ExtractedService = z.infer<typeof ServiceItemSchema> & {
+  /** Section-shared options attached to this base service (may be absent/empty). */
+  options?: ServiceOption[];
+  /** 0-based index of this service's subcategory on the page (for stable ordering). */
+  subcategory_order?: number;
+};
+
+/** The Haiku output, with services widened to carry deterministic options + order. */
+export type SalonExtract = Omit<z.infer<typeof SalonExtractSchema>, "services"> & {
+  services: ExtractedService[];
+};
 export type DayKey = (typeof DAY_KEYS)[number];
 
 // ---------------------------------------------------------------------------
@@ -206,12 +232,111 @@ function extractPlanityLdJson($: CheerioAPI): Record<string, unknown> | null {
   return safeJsonParse<Record<string, unknown>>($('script[type="application/ld+json"]').first().html());
 }
 
+// --- Planity option / variant detection (deterministic, no LLM) ------------
+
+function normKey(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+/**
+ * True when a Planity row is a shared option/add-on ("Finition Silk Press",
+ * "Supplément cheveux longs") rather than a standalone bookable service. On
+ * Planity these cannot be booked alone — they attach to the base services in
+ * their subcategory.
+ */
+function isPlanityOptionName(name: string): boolean {
+  const n = normKey(name);
+  return n.startsWith("finition") || n.startsWith("supplement");
+}
+
+/** Diagnostics / pre-consultations never take a finition option. */
+function isNonOptionableBase(name: string): boolean {
+  return normKey(name).startsWith("diagnostic");
+}
+
+/** "190 €" → 190; "de 70 € à 120 €" → 70; "Sur devis" / "" → 0. */
+function parsePlanityPrice(raw: string): number {
+  const m = raw.replace(/ /g, " ").match(/(\d+(?:[.,]\d+)?)/);
+  return m ? Math.round(Number(m[1].replace(",", "."))) : 0;
+}
+
+/** "1h30" → 90, "1h" → 60, "45min" → 45, range → first value, else null. */
+function parsePlanityDuration(raw: string): number | null {
+  const first = (raw.split(/[-–]/)[0] ?? "").trim();
+  const hm = first.match(/(\d+)\s*h\s*(\d+)?/i);
+  if (hm) return Number(hm[1]) * 60 + (hm[2] ? Number(hm[2]) : 0);
+  const min = first.match(/(\d+)\s*min/i);
+  if (min) return Number(min[1]);
+  const bare = first.match(/^(\d+)$/);
+  return bare ? Number(bare[1]) : null;
+}
+
+export type PlanityOptionGraph = {
+  /** key `${normSubcategory}||${normServiceName}` → the base service's options. */
+  optionsByService: Map<string, ServiceOption[]>;
+  /** `normSubcategory` → 0-based page order index. */
+  orderBySubcategory: Map<string, number>;
+};
+
+/**
+ * Deterministically derives, from the expanded Planity DOM, (a) the page order
+ * of each subcategory and (b) the section-shared options ("Finition …" /
+ * "Supplément …" rows) attached to each base service in that subcategory.
+ * Diagnostics are excluded from receiving options. Sections with no option
+ * rows contribute only an order index. Merged onto the Haiku result in
+ * `extractSalon` — Haiku itself never sees option rows.
+ */
+export function extractPlanityOptionGraph($: CheerioAPI): PlanityOptionGraph {
+  const optionsByService = new Map<string, ServiceOption[]>();
+  const orderBySubcategory = new Map<string, number>();
+
+  $('[id$="-service-item"]').each((sectionIdx, wrapperEl) => {
+    const $wrapper = $(wrapperEl);
+    const subKey = normKey($wrapper.find("h3").first().text().trim());
+    if (subKey && !orderBySubcategory.has(subKey)) orderBySubcategory.set(subKey, sectionIdx);
+
+    const baseNames: string[] = [];
+    const options: ServiceOption[] = [];
+    $wrapper.find('li[itemtype="https://schema.org/Offer"]').each((_, li) => {
+      const $li = $(li);
+      const name = $li.find('[id^="service-name-"]').first().text().trim();
+      if (!name) return;
+      if (isPlanityOptionName(name)) {
+        options.push({
+          name,
+          price: parsePlanityPrice($li.find('[id*="-price"]').first().text().trim()),
+          duration_minutes: parsePlanityDuration($li.find('[id*="-duration"]').first().text().trim()),
+        });
+      } else if (!isNonOptionableBase(name)) {
+        baseNames.push(name);
+      }
+    });
+
+    if (options.length === 0) return;
+    for (const baseName of baseNames) {
+      optionsByService.set(`${subKey}||${normKey(baseName)}`, options);
+    }
+  });
+
+  return { optionsByService, orderBySubcategory };
+}
+
 function extractPlanityServices($: CheerioAPI): TrimmedService[] {
   const services: TrimmedService[] = [];
 
   const pushOfferLi = ($li: ReturnType<CheerioAPI>, category: string) => {
     const name = $li.find('[id^="service-name-"]').first().text().trim();
     if (!name) return;
+    // Skip "Finition …" / "Supplément …" rows — they are section-shared options
+    // folded into their base services' `variants` downstream (see
+    // extractPlanityOptionGraph). Emitting them as standalone services is what
+    // produced the duplicate "Service already exists" skips on the first run.
+    if (isPlanityOptionName(name)) return;
     const duration = $li.find('[id*="-duration"]').first().text().trim();
     const price = $li.find('[id*="-price"]').first().text().trim();
     const description = $li.find('[class*="description"]').first().text().trim();
@@ -546,5 +671,30 @@ export async function extractSalon(
     throw new Error("claude-haiku-4-5 structured-output extraction returned no parsed_output");
   }
 
-  return response.parsed_output;
+  const parsed = response.parsed_output as SalonExtract;
+  return sourceType === "planity" ? mergePlanityOptions(parsed, html) : parsed;
+}
+
+/**
+ * Attaches the deterministic Planity option graph (options + subcategory page
+ * order) onto the Haiku-extracted services, matching by
+ * (subcategory_name, service_name). Haiku keeps names verbatim, so an exact
+ * normalized match is reliable; services with no match are returned unchanged.
+ */
+function mergePlanityOptions(parsed: SalonExtract, html: string): SalonExtract {
+  const $ = cheerio.load(html);
+  const { optionsByService, orderBySubcategory } = extractPlanityOptionGraph($);
+
+  const services: ExtractedService[] = parsed.services.map((service) => {
+    const subKey = normKey(service.subcategory_name);
+    const options = optionsByService.get(`${subKey}||${normKey(service.service_name)}`);
+    const order = orderBySubcategory.get(subKey);
+    return {
+      ...service,
+      ...(options && options.length > 0 ? { options } : {}),
+      ...(order != null ? { subcategory_order: order } : {}),
+    };
+  });
+
+  return { ...parsed, services };
 }

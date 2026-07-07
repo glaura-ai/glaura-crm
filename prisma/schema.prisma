@@ -236,6 +236,10 @@ model OnboardingJob {
   sourceType String? // planity | treatwell | acuity | generic
   status     OnboardingStatus @default(QUEUED)
 
+  // Per-job onboarding overrides (P6 full onboarding): loginEmail, loginPassword,
+  // enable, deposit, agentCount, reviewTarget. Null → legacy disabled behavior.
+  config Json?
+
   startedAt  DateTime?
   finishedAt DateTime?
   durationMs Int?

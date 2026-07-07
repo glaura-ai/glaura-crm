@@ -36,17 +36,31 @@
  * own heading) is still auto-created per-owner.
  */
 
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getAuth, getDb } from "@/lib/firebase-admin";
-import { buildSearchNameList, buildServicesPayload, buildUserProfile, generatePassword, slugify } from "./account-model";
+import {
+  buildAgentDocs,
+  buildReviewDocs,
+  buildSearchNameList,
+  buildServicesPayload,
+  buildUserProfile,
+  generatePassword,
+  slugify,
+  variantKeyForServiceName,
+  type AgentDoc,
+  type CreatedServiceRef,
+  type ServiceVariantPatch,
+} from "./account-model";
 import type { SalonExtract } from "./extract";
 import { geocode } from "./geocode";
 import { hoursToTiming } from "./hours";
-import type { OnboardingHints, OnboardingResult } from "@/lib/onboarding";
+import type { OnboardingHints, OnboardingOverrides, OnboardingResult } from "@/lib/onboarding";
 
 const EMAIL_DOMAIN = "glaura.fr";
-const SERVICES_UPLOAD_URL =
+const FUNCTIONS_BASE_URL =
   process.env.GLAURA_FUNCTIONS_BASE_URL?.trim() || "https://us-central1-beauty-984c8.cloudfunctions.net";
+const SERVICES_UPLOAD_URL = FUNCTIONS_BASE_URL;
+const CREATE_AGENT_URL = `${FUNCTIONS_BASE_URL}/createAgent`;
 const MAX_SUFFIX_ATTEMPTS = 500;
 
 /** Context the caller already has from earlier pipeline steps (P1/P2) that isn't part of `extract` or `hints`. */
@@ -73,6 +87,7 @@ export interface CreateAccountResult extends OnboardingResult {
   lng: number | null;
   serviceCount: number;
   agentCount: number;
+  reviewCount: number;
   sourceType: string;
   url: string;
   warnings: string[];
@@ -90,8 +105,8 @@ type UploadServicesResponse = {
   };
 };
 
-function failure(partial: Omit<CreateAccountResult, "status" | "agentCount">): CreateAccountResult {
-  return { status: "failed", agentCount: 0, ...partial };
+function failure(partial: Omit<CreateAccountResult, "status" | "agentCount" | "reviewCount">): CreateAccountResult {
+  return { status: "failed", agentCount: 0, reviewCount: 0, ...partial };
 }
 
 /**
@@ -177,9 +192,11 @@ async function resolveLocation(
   return { address, lat: geocoded.lat, lng: geocoded.lng };
 }
 
-/** Uploads the extract's services via the (open, unauthenticated) `uploadServicesFromJSON` Cloud Function. */
-async function uploadServices(extract: SalonExtract, ownerId: string, warnings: string[]): Promise<number> {
-  const payload = buildServicesPayload(extract, ownerId);
+/** Uploads a prebuilt services payload via the (open, unauthenticated) `uploadServicesFromJSON` Cloud Function. */
+async function uploadServices(
+  payload: { ownerId: string; services: unknown[] },
+  warnings: string[],
+): Promise<number> {
   if (payload.services.length === 0) return 0;
 
   try {
@@ -208,6 +225,156 @@ async function uploadServices(extract: SalonExtract, ownerId: string, warnings: 
   }
 }
 
+// ---------------------------------------------------------------------------
+// Enrichment writes (P6 full onboarding) — all non-fatal (push warnings).
+// ---------------------------------------------------------------------------
+
+type CreatedService = CreatedServiceRef & { service_name: string };
+
+/** Reads back the salon's just-created service docs (id + category/subcategory + name). */
+async function readBackServices(ownerId: string): Promise<CreatedService[]> {
+  const snap = await getDb().collection("services").where("ownerId", "==", ownerId).get();
+  return snap.docs.map((d) => {
+    const data = d.data() as { category_id?: string; subcategory_id?: string; service_name?: string };
+    return {
+      id: d.id,
+      category_id: data.category_id ?? "",
+      subcategory_id: data.subcategory_id ?? "",
+      service_name: data.service_name ?? "",
+    };
+  });
+}
+
+/** Patches `variants` + `base_option_label` onto the created service docs that carry options. */
+async function patchServiceVariants(
+  services: readonly CreatedService[],
+  variantsByServiceName: Record<string, ServiceVariantPatch>,
+  warnings: string[],
+): Promise<number> {
+  const db = getDb();
+  let patched = 0;
+  for (const svc of services) {
+    const patch = variantsByServiceName[variantKeyForServiceName(svc.service_name)];
+    if (!patch) continue;
+    try {
+      await db.collection("services").doc(svc.id).update({
+        variants: patch.variants,
+        base_option_label: patch.base_option_label,
+        updated_at: FieldValue.serverTimestamp(),
+      });
+      patched += 1;
+    } catch (error) {
+      warnings.push(`Variant patch failed for service ${svc.id} (${svc.service_name}): ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  return patched;
+}
+
+/** Sets each subcategory doc's `order` to its page index (the public site reads this). */
+async function applySubcategoryOrder(
+  ownerId: string,
+  orderBySubcategoryName: Map<string, number>,
+  warnings: string[],
+): Promise<void> {
+  try {
+    const db = getDb();
+    const snap = await db.collection("subcategories").where("service_provider_id", "==", ownerId).get();
+    const batch = db.batch();
+    let updates = 0;
+    for (const doc of snap.docs) {
+      const name = normalizeName((doc.data() as { name?: string }).name ?? "");
+      const order = orderBySubcategoryName.get(name);
+      if (order == null) continue;
+      batch.update(doc.ref, { order });
+      updates += 1;
+    }
+    if (updates > 0) await batch.commit();
+  } catch (error) {
+    warnings.push(`Subcategory ordering failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/** POSTs each synthesized agent to the open `createAgent` Cloud Function. Returns the count created. */
+async function createAgents(agents: readonly AgentDoc[], warnings: string[]): Promise<number> {
+  let created = 0;
+  for (const agent of agents) {
+    try {
+      const response = await fetch(CREATE_AGENT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(agent),
+      });
+      if (response.status === 201) {
+        created += 1;
+      } else {
+        const body = (await response.json().catch(() => null)) as { message?: string } | null;
+        warnings.push(`Agent "${agent.name}" not created (HTTP ${response.status}): ${body?.message ?? response.statusText}`);
+      }
+    } catch (error) {
+      warnings.push(`Agent "${agent.name}" request failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  return created;
+}
+
+/** Writes the review subcollection and denormalizes the aggregate onto the profile. */
+async function writeReviews(
+  ownerId: string,
+  reviews: ReturnType<typeof buildReviewDocs>,
+  warnings: string[],
+): Promise<number> {
+  if (reviews.reviews.length === 0) return 0;
+  try {
+    const db = getDb();
+    const col = db.collection("userProfile").doc(ownerId).collection("reviews");
+    let batch = db.batch();
+    let inBatch = 0;
+    let written = 0;
+    for (const r of reviews.reviews) {
+      const ref = col.doc();
+      batch.set(ref, {
+        id: ref.id,
+        userName: r.userName,
+        userImage: r.userImage,
+        userid: r.userid,
+        ratting: r.ratting,
+        review: r.review,
+        serviceId: r.serviceId,
+        serviceName: r.serviceName,
+        jobId: r.jobId,
+        createdAt: Timestamp.fromDate(r.createdAt),
+      });
+      inBatch += 1;
+      written += 1;
+      if (inBatch >= 400) {
+        await batch.commit();
+        batch = db.batch();
+        inBatch = 0;
+      }
+    }
+    if (inBatch > 0) await batch.commit();
+
+    await db.collection("userProfile").doc(ownerId).update({
+      avg_ratting: reviews.avg_ratting,
+      total_review: reviews.total_review,
+    });
+    return written;
+  } catch (error) {
+    warnings.push(`Review write failed: ${error instanceof Error ? error.message : String(error)}`);
+    return 0;
+  }
+}
+
+/** Shared name normalizer for matching created docs back to extract rows. */
+function normalizeName(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
 /**
  * Creates a DISABLED Glaura salon account (Auth user + `userProfile` +
  * services) from a validated `SalonExtract`, or returns the existing
@@ -219,6 +386,7 @@ export async function createDisabledSalonAccount(
   extract: SalonExtract,
   hints: OnboardingHints | undefined,
   source: AccountSourceContext,
+  overrides?: OnboardingOverrides,
 ): Promise<CreateAccountResult> {
   const warnings: string[] = [];
 
@@ -238,6 +406,7 @@ export async function createDisabledSalonAccount(
           lng: data.spLocation?.longitude ?? null,
           serviceCount: 0,
           agentCount: 0,
+          reviewCount: 0,
           sourceType: source.sourceType,
           url: source.url,
           warnings: [],
@@ -302,6 +471,12 @@ export async function createDisabledSalonAccount(
     });
   }
 
+  // (b.1) Credential overrides (P6): use the job's external login when provided,
+  // otherwise fall back to the reserved `<slug>@glaura.fr` + a generated password.
+  // The reserved slug is still the `companyUserName`; only the Auth email changes.
+  const overrideEmail = overrides?.loginEmail?.trim();
+  if (overrideEmail) email = overrideEmail;
+
   // (c) Location.
   const { address, lat, lng } = await resolveLocation(extract, hints, warnings);
 
@@ -309,7 +484,7 @@ export async function createDisabledSalonAccount(
   const { timing, days } = hoursToTiming(extract.salon.hours);
 
   // (e) Auth user.
-  const password = generatePassword();
+  const password = overrides?.loginPassword?.trim() || generatePassword();
   let uid: string;
   try {
     const userRecord = await getAuth().createUser({
@@ -350,6 +525,8 @@ export async function createDisabledSalonAccount(
       lng,
       hints: { crmSalonId: hints?.crmSalonId ?? null },
       crmSourceUrl: source.url,
+      enable: overrides?.enable ?? false,
+      deposit: overrides?.deposit ?? null,
     });
 
     // P3a's `now` stand-in must be replaced with the real server timestamp
@@ -382,11 +559,42 @@ export async function createDisabledSalonAccount(
   }
 
   // (g) Services — non-fatal on failure (see module doc comment).
-  const serviceCount = await uploadServices(extract, uid, warnings);
+  const { payload, variantsByServiceName } = buildServicesPayload(extract, uid);
+  const serviceCount = await uploadServices(payload, warnings);
 
-  // (h) Agents — skipped for v1.
-  if (extract.staff.length > 0) {
-    warnings.push(`staff not created (services-only v1): ${extract.staff.join(", ")}`);
+  // (h) Enrichment (P6 full onboarding) — options, subcategory order, agents,
+  // reviews, deposit. All non-fatal; the base account already exists.
+  const created = serviceCount > 0 ? await readBackServices(uid) : [];
+
+  if (Object.keys(variantsByServiceName).length > 0) {
+    await patchServiceVariants(created, variantsByServiceName, warnings);
+  }
+
+  // Subcategory page order: subcategory_name → its 0-based order from the extract.
+  const orderBySubcategoryName = new Map<string, number>();
+  for (const svc of extract.services) {
+    if (svc.subcategory_order == null) continue;
+    const key = normalizeName(svc.subcategory_name);
+    if (!orderBySubcategoryName.has(key)) orderBySubcategoryName.set(key, svc.subcategory_order);
+  }
+  if (orderBySubcategoryName.size > 0) {
+    await applySubcategoryOrder(uid, orderBySubcategoryName, warnings);
+  }
+
+  // Agents — synthesized (the page carries no real staff), each doing all services.
+  let agentCount = 0;
+  const agentTarget = overrides?.agentCount ?? 0;
+  if (agentTarget > 0 && created.length > 0) {
+    const agents = buildAgentDocs(agentTarget, uid, timing, days, created);
+    agentCount = await createAgents(agents, warnings);
+  }
+
+  // Reviews — real Planity reviews first (forced 5★), filled to the target.
+  let reviewCount = 0;
+  const reviewTarget = overrides?.reviewTarget ?? 0;
+  if (reviewTarget > 0) {
+    const reviewDocs = buildReviewDocs(extract.reviews ?? [], reviewTarget, new Date());
+    reviewCount = await writeReviews(uid, reviewDocs, warnings);
   }
 
   // (i) Success.
@@ -399,7 +607,8 @@ export async function createDisabledSalonAccount(
     lat,
     lng,
     serviceCount,
-    agentCount: 0,
+    agentCount,
+    reviewCount,
     sourceType: source.sourceType,
     url: source.url,
     warnings,
