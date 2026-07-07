@@ -56,7 +56,15 @@ async function fetchImage(url: string): Promise<Buffer | null> {
   }
 }
 
-/** Downloads one image (forcing JPEG for Cloudinary) and uploads it public. Returns its URL or null. */
+/**
+ * Downloads one image (forcing JPEG for Cloudinary) and uploads it to the EU
+ * media bucket. Returns the public `storage.googleapis.com` URL (the app
+ * rewrites it to images.glaura.ai via cdnImageUrl) or null on failure.
+ *
+ * The bucket uses uniform bucket-level access, so per-object `makePublic()` is
+ * rejected — public read is granted at the bucket level (and served through the
+ * images.glaura.ai CDN), exactly as the apps' own uploads rely on.
+ */
 async function hostOne(url: string, storagePath: string): Promise<string | null> {
   const buf = await fetchImage(isCloudinary(url) ? forceJpg(url) : url);
   if (!buf) return null;
@@ -66,7 +74,6 @@ async function hostOne(url: string, storagePath: string): Promise<string | null>
     contentType: "image/jpeg",
     metadata: { metadata: { originalUrl: url, uploadedBy: "crm-onboarding" } },
   });
-  await file.makePublic();
   return `https://storage.googleapis.com/${MEDIA_BUCKET}/${storagePath}`;
 }
 
