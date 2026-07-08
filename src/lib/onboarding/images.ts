@@ -79,11 +79,17 @@ async function hostOne(url: string, storagePath: string): Promise<string | null>
 
 /**
  * Re-hosts up to [MAX_IMAGES] of `imageUrls` into the EU media bucket under
- * `salon_images/<ownerId>/<i>-<now>.jpg`, plus a dedicated main image under
+ * `salon_images/<ownerId>_<i>-<now>.jpg`, plus a dedicated main image under
  * `profile_images/<ownerId>_<now>.jpg`. `now` is injected (epoch ms) so paths
  * are unique per run (busts the CDN's immutable cache) and the function stays
  * deterministic. Never throws — download/upload failures are recorded in
  * `warnings` and simply drop that image.
+ *
+ * IMPORTANT: both prefixes use a FLAT, single-segment object name
+ * (`salon_images/<x>.jpg`, not `salon_images/<owner>/<x>.jpg`). The Firebase
+ * Storage rules (`match /salon_images/{fileName}`) and the images.glaura.ai CDN
+ * only grant public read to single-segment objects — a nested path is
+ * read-denied (403) and 404s through the CDN, so the gallery would not render.
  */
 export async function rehostSalonImages(
   ownerId: string,
@@ -99,7 +105,7 @@ export async function rehostSalonImages(
   const salonImages: string[] = [];
   for (let i = 0; i < urls.length; i += 1) {
     try {
-      const hosted = await hostOne(urls[i], `salon_images/${ownerId}/${i}-${now}.jpg`);
+      const hosted = await hostOne(urls[i], `salon_images/${ownerId}_${i}-${now}.jpg`);
       if (hosted) salonImages.push(hosted);
       else warnings.push(`salon image skipped (download failed): ${urls[i]}`);
     } catch (error) {
