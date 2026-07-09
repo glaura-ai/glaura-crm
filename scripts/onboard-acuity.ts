@@ -84,6 +84,9 @@ interface AcuityChainConfig {
   slug: string;
   name: string;
   description?: string;
+  /** Optional reservation policy shown in the chain page's right-hand panel (per-chain). */
+  reservationPolicy?: Array<{ title: string; text: string }>;
+  reservationPolicyNote?: string;
 }
 
 interface AcuityOnboardConfig {
@@ -216,18 +219,17 @@ async function onboardVenue(
  */
 async function writeChainGroup(chain: AcuityChainConfig, salonOwnerIds: string[]) {
   const { getDb } = await import("@/lib/firebase-admin");
-  await getDb()
-    .collection("salonGroups")
-    .doc(chain.slug)
-    .set(
-      {
-        enabled: true,
-        name: chain.name,
-        description: chain.description ?? "",
-        salonOwnerIds,
-      },
-      { merge: true },
-    );
+  const doc: Record<string, unknown> = {
+    enabled: true,
+    name: chain.name,
+    description: chain.description ?? "",
+    salonOwnerIds,
+  };
+  if (chain.reservationPolicy && chain.reservationPolicy.length > 0) {
+    doc.reservationPolicy = chain.reservationPolicy.map((p) => ({ title: p.title, text: p.text }));
+    doc.reservationPolicyNote = chain.reservationPolicyNote ?? "";
+  }
+  await getDb().collection("salonGroups").doc(chain.slug).set(doc, { merge: true });
 }
 
 function logServices(label: string, services: ExtractedService[], imageCount: number) {
