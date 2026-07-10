@@ -4,7 +4,7 @@ import Credentials from "next-auth/providers/credentials";
 import { prisma } from "@/lib/db";
 
 const ALLOWED_GOOGLE_EMAILS = new Set(
-  (process.env.ALLOWED_GOOGLE_EMAILS ?? "f.namory@glaura.fr,a.ribeiro@glaura.fr")
+  (process.env.ALLOWED_GOOGLE_EMAILS ?? "a.ribeiro@glaura.fr")
     .split(",")
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean),
