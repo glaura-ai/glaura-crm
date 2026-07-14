@@ -261,6 +261,7 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
         serviceCount: result.serviceCount,
         agentCount: result.agentCount,
         reviewCount: result.reviewCount,
+        welcomeEmailSent: result.welcomeEmailSent,
       },
     });
 

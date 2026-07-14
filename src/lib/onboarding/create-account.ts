@@ -47,6 +47,7 @@ import {
   generatePassword,
   slugify,
   variantKeyForServiceName,
+  GLAURA_EMAIL_DOMAIN,
   type AgentDoc,
   type CreatedServiceRef,
   type ServiceVariantPatch,
@@ -55,9 +56,10 @@ import type { SalonExtract } from "./extract";
 import { geocode } from "./geocode";
 import { hoursToTiming } from "./hours";
 import { rehostSalonImages } from "./images";
+import { maybeSendWelcomeEmail } from "./welcome-email";
 import type { OnboardingHints, OnboardingOverrides, OnboardingResult } from "@/lib/onboarding";
 
-const EMAIL_DOMAIN = "glaura.fr";
+const EMAIL_DOMAIN = GLAURA_EMAIL_DOMAIN;
 const FUNCTIONS_BASE_URL =
   process.env.GLAURA_FUNCTIONS_BASE_URL?.trim() || "https://us-central1-beauty-984c8.cloudfunctions.net";
 const SERVICES_UPLOAD_URL = FUNCTIONS_BASE_URL;
@@ -89,6 +91,8 @@ export interface CreateAccountResult extends OnboardingResult {
   serviceCount: number;
   agentCount: number;
   reviewCount: number;
+  /** Whether the onboarding welcome email was sent (only for real, non-@glaura.fr logins). */
+  welcomeEmailSent: boolean;
   sourceType: string;
   url: string;
   warnings: string[];
@@ -106,8 +110,10 @@ type UploadServicesResponse = {
   };
 };
 
-function failure(partial: Omit<CreateAccountResult, "status" | "agentCount" | "reviewCount">): CreateAccountResult {
-  return { status: "failed", agentCount: 0, reviewCount: 0, ...partial };
+function failure(
+  partial: Omit<CreateAccountResult, "status" | "agentCount" | "reviewCount" | "welcomeEmailSent">,
+): CreateAccountResult {
+  return { status: "failed", agentCount: 0, reviewCount: 0, welcomeEmailSent: false, ...partial };
 }
 
 /**
@@ -408,6 +414,7 @@ export async function createDisabledSalonAccount(
           serviceCount: 0,
           agentCount: 0,
           reviewCount: 0,
+          welcomeEmailSent: false,
           sourceType: source.sourceType,
           url: source.url,
           warnings: [],
@@ -605,7 +612,15 @@ export async function createDisabledSalonAccount(
     reviewCount = await writeReviews(uid, reviewDocs, warnings);
   }
 
-  // (i) Success.
+  // (i) Onboarding welcome email — only for real (non-@glaura.fr) logins, so
+  // the salon receives its credentials + next steps. Non-fatal: a send failure
+  // is recorded as a warning, never aborts the (already complete) onboarding.
+  const welcome = await maybeSendWelcomeEmail({ email, password, companyUserName: slug, salonName: name });
+  if (welcome.error) {
+    warnings.push(`Welcome email failed for ${email}: ${welcome.error}`);
+  }
+
+  // (j) Success.
   return {
     status: "success",
     ownerId: uid,
@@ -617,6 +632,7 @@ export async function createDisabledSalonAccount(
     serviceCount,
     agentCount,
     reviewCount,
+    welcomeEmailSent: welcome.sent,
     sourceType: source.sourceType,
     url: source.url,
     warnings,

@@ -17,6 +17,14 @@ import type { SalonExtract } from "./extract";
 import { categoryIdForName } from "./categories";
 import type { Timing } from "./hours";
 
+/**
+ * The email domain used for the throwaway `<slug>@glaura.fr` placeholder logins
+ * the pipeline creates for disabled skeletons. Single source of truth so the
+ * account-creation side and the welcome-email gate can never drift apart (the
+ * gate must skip exactly these placeholder mailboxes).
+ */
+export const GLAURA_EMAIL_DOMAIN = "glaura.fr";
+
 // ---------------------------------------------------------------------------
 // slugify — ported from createServiceProvider.js's generateBaseUsername
 // ---------------------------------------------------------------------------
