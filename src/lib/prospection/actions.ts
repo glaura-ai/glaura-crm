@@ -98,6 +98,36 @@ export async function discardProspect(fd: FormData) {
   });
 }
 
+// Validate one of the scored IG candidates by hand (A_VALIDER → CONFIRME).
+export async function validateInstagram(fd: FormData) {
+  await requireUser();
+  return withErrorBanner(async () => {
+    const d = z
+      .object({ prospectId: z.string().min(1), username: z.string().min(1) })
+      .parse({ prospectId: fd.get("prospectId"), username: fd.get("username") });
+
+    const prospect = await prisma.prospect.findUniqueOrThrow({
+      where: { id: d.prospectId },
+      select: { igCandidates: true },
+    });
+    const candidates = Array.isArray(prospect.igCandidates) ? prospect.igCandidates : [];
+    const chosen = candidates.find(
+      (c) => typeof c === "object" && c !== null && (c as { username?: string }).username === d.username,
+    ) as { username: string; followers?: number | null } | undefined;
+    if (!chosen) throw new Error("Candidat Instagram inconnu pour ce prospect.");
+
+    await prisma.prospect.update({
+      where: { id: d.prospectId },
+      data: {
+        instagram: chosen.username,
+        instagramFollowers: chosen.followers ?? null,
+        igStatus: "CONFIRME",
+        igCheckedAt: new Date(),
+      },
+    });
+  });
+}
+
 const SOURCE_TO_BOOKING_TOOL: Record<ProspectSource, BookingTool> = {
   PLANITY: "PLANITY",
   TREATWELL: "TREATWELL",

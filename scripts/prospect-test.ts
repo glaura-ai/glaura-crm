@@ -12,6 +12,8 @@ import { booksyTargets } from "../src/lib/prospection/sources/booksy";
 import { freshaTargets } from "../src/lib/prospection/sources/fresha";
 import { planityMaxPage, planityPageUrl, planityTargets } from "../src/lib/prospection/sources/planity";
 import { treatwellMaxPage, treatwellPageUrl, treatwellTargets } from "../src/lib/prospection/sources/treatwell";
+import { candidateUsernames, decide, looksRelated, scoreCandidate } from "../src/lib/prospection/ig-match";
+import { cookieHeaderFromNetscape } from "../src/lib/prospection/instagram";
 import { matchCrmSalon, normalizeBookingUrl, normalizeName, postalFromArrondissement } from "../src/lib/prospection/match";
 import { ZONE_BY_SLUG, ZONES, zoneForPostalCode } from "../src/lib/prospection/zones";
 
@@ -170,6 +172,101 @@ ok("postalFromArrondissement handles free-text formats", () => {
   assert.equal(postalFromArrondissement("21"), null); // pas un arrondissement
   assert.equal(postalFromArrondissement("Boulogne"), null);
   assert.equal(postalFromArrondissement(null), null);
+});
+
+// --- Instagram cross-validation ------------------------------------------------
+
+ok("ig scoring: booking link in bio is definitive", () => {
+  const prospect = { name: "Legend's Barber", sourceUrl: "https://www.treatwell.fr/salon/legends-barber/", postalCode: "75011", city: "Paris" };
+  const profile = {
+    username: "some_random_handle",
+    fullName: "Barber Shop",
+    followers: 1200,
+    biography: "RDV en ligne",
+    bioLinks: ["https://www.treatwell.fr/salon/legends-barber/"],
+    categoryName: null,
+    isPrivate: false,
+    businessAddress: null,
+  };
+  const scored = scoreCandidate(prospect, profile);
+  assert.ok(scored.signals.includes("lien_resa"));
+  const decision = decide([scored]);
+  assert.equal(decision.status, "CONFIRME");
+});
+
+ok("ig scoring: exact name + location auto-confirms", () => {
+  const prospect = { name: "L'Atelier Éclat", sourceUrl: "https://www.planity.com/x", postalCode: "75004", city: "Paris" };
+  const profile = {
+    username: "latelier.eclat",
+    fullName: "L'Atelier Eclat",
+    followers: 800,
+    biography: "Coiffeur coloriste — 75004 Paris",
+    bioLinks: [],
+    categoryName: "Hair Salon",
+    isPrivate: false,
+    businessAddress: null,
+  };
+  const decision = decide([scoreCandidate(prospect, profile)]);
+  assert.equal(decision.status, "CONFIRME");
+});
+
+ok("ig scoring: partial name only → à valider, unrelated → introuvable", () => {
+  const prospect = { name: "Rosalie Beauté Paris", sourceUrl: "https://www.treatwell.fr/salon/rosalie/", postalCode: "75011", city: "Paris" };
+  const partial = decide([
+    scoreCandidate(prospect, {
+      username: "rosalie.institut",
+      fullName: "Rosalie",
+      followers: 300,
+      biography: "Institut de beauté Paris",
+      bioLinks: [],
+      categoryName: null,
+      isPrivate: false,
+      businessAddress: null,
+    }),
+  ]);
+  assert.equal(partial.status, "A_VALIDER");
+
+  const unrelated = decide([
+    scoreCandidate(prospect, {
+      username: "voyages_lointains",
+      fullName: "Blog Voyage",
+      followers: 50000,
+      biography: "Travel",
+      bioLinks: [],
+      categoryName: "Blog",
+      isPrivate: false,
+      businessAddress: null,
+    }),
+  ]);
+  assert.equal(unrelated.status, "INTROUVABLE");
+});
+
+ok("candidateUsernames generates plausible handles", () => {
+  const guesses = candidateUsernames("Legend's Barber", "Paris");
+  assert.ok(guesses.includes("legendsbarber"));
+  assert.ok(guesses.includes("legends_barber"));
+  assert.ok(guesses.includes("legendsbarberparis"));
+  assert.ok(guesses.every((g) => g.length <= 30));
+  assert.deepEqual(candidateUsernames("!!", null), []);
+});
+
+ok("looksRelated prefilters unrelated topsearch hits", () => {
+  assert.ok(looksRelated("Legend's Barber", "legends_barber_paris", null));
+  assert.ok(!looksRelated("Legend's Barber", "cupcake_lily", "Lily Cakes"));
+});
+
+ok("cookieHeaderFromNetscape builds header and requires sessionid", () => {
+  const netscape = [
+    "# Netscape HTTP Cookie File",
+    "#HttpOnly_.instagram.com\tTRUE\t/\tTRUE\t0\tsessionid\tSECRET123",
+    ".instagram.com\tTRUE\t/\tTRUE\t0\tcsrftoken\tTOK",
+    ".autresite.com\tTRUE\t/\tTRUE\t0\tfoo\tbar",
+  ].join("\n");
+  const header = cookieHeaderFromNetscape(netscape);
+  assert.ok(header.includes("sessionid=SECRET123"));
+  assert.ok(header.includes("csrftoken=TOK"));
+  assert.ok(!header.includes("foo=bar"));
+  assert.throws(() => cookieHeaderFromNetscape(".instagram.com\tTRUE\t/\tTRUE\t0\tcsrftoken\tTOK"));
 });
 
 console.log(`\n${passed} tests OK`);

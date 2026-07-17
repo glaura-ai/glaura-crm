@@ -25,6 +25,14 @@ export async function getZoneAvailability(): Promise<ZoneAvailability[]> {
   }));
 }
 
+export type IgCandidateJson = {
+  username: string;
+  fullName: string | null;
+  followers: number | null;
+  score: number;
+  signals: string[];
+};
+
 export type TourneeProspect = {
   id: string;
   name: string;
@@ -37,6 +45,9 @@ export type TourneeProspect = {
   rating: number | null;
   reviewCount: number;
   instagram: string | null;
+  instagramFollowers: number | null;
+  igStatus: string;
+  igCandidates: unknown;
   status: string;
 };
 
@@ -69,6 +80,9 @@ export async function getTodaysTournees(today = new Date()): Promise<TourneeWith
           rating: true,
           reviewCount: true,
           instagram: true,
+          instagramFollowers: true,
+          igStatus: true,
+          igCandidates: true,
           status: true,
         },
       },

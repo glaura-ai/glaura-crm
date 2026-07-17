@@ -88,6 +88,15 @@ enum ProspectStatus {
   DEJA_CRM // matches a salon already in the CRM — excluded from tournées
 }
 
+// Instagram enrichment lifecycle (cross-validated against the salon).
+enum IgStatus {
+  A_FAIRE // not enriched yet
+  CONFIRME // account auto-confirmed by strong signals (booking link, name+location)
+  A_VALIDER // candidates found, needs a human click
+  INTROUVABLE // searched, no plausible account
+  ERREUR // enrichment failed for this prospect (retryable)
+}
+
 // Onboarding engine job lifecycle (mirrors the VPS result file).
 enum OnboardingStatus {
   QUEUED
@@ -212,7 +221,9 @@ model Prospect {
 
   instagram          String?
   instagramFollowers Int?
-  igCandidates       Json? // candidate IG handles awaiting visual validation
+  igCandidates       Json? // scored candidates [{username, followers, score, signals[]}]
+  igStatus           IgStatus  @default(A_FAIRE)
+  igCheckedAt        DateTime?
 
   status         ProspectStatus @default(NOUVEAU)
   matchedSalonId String? // existing CRM salon this prospect was matched to (DEJA_CRM)
@@ -231,6 +242,7 @@ model Prospect {
   @@index([zone, status, reviewCount])
   @@index([status])
   @@index([tourneeId])
+  @@index([igStatus])
 }
 
 // A daily prospecting round: 20-30 prospects in one zone, assigned to a commercial.
