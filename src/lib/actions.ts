@@ -6,6 +6,8 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { isDailyPriorityActive, startOfDay } from "@/lib/dailyPriority";
+import { geocodeAddress } from "@/lib/geocode";
+import { uniqueSalonSlug } from "@/lib/slugs";
 import { EMAIL_TEMPLATES } from "@/lib/emailTemplates";
 import { defaultEmailFrom } from "@/lib/email";
 import type { ActivityType, BookingTool, EmailTemplate, Metier, SalonStatus, SalonType } from "@/generated/prisma/enums";
@@ -30,25 +32,7 @@ async function assertCanAccessSalon(salonId: string) {
   return user;
 }
 
-function slugify(s: string): string {
-  return s
-    .normalize("NFD")
-    .replace(/[^\x00-\x7f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-async function uniqueSlug(name: string, excludeId?: string): Promise<string> {
-  const base = slugify(name) || "salon";
-  let slug = base;
-  let i = 1;
-  while (true) {
-    const existing = await prisma.salon.findUnique({ where: { slug } });
-    if (!existing || existing.id === excludeId) return slug;
-    slug = `${base}-${i++}`;
-  }
-}
+const uniqueSlug = uniqueSalonSlug;
 
 const salonSchema = z.object({
   name: z.string().min(1, "Nom requis"),
@@ -68,12 +52,6 @@ const salonSchema = z.object({
   notes: z.string().optional(),
 });
 
-type GeocodedAddress = {
-  address: string;
-  lat: number;
-  lng: number;
-};
-
 function optionalString(value: FormDataEntryValue | null): string | undefined {
   const next = value?.toString().trim();
   return next || undefined;
@@ -83,32 +61,6 @@ function parseOptionalNumber(value?: string): number | null {
   if (!value) return null;
   const parsed = Number(value.trim().replace(",", "."));
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-async function geocodeAddress(address: string): Promise<GeocodedAddress | null> {
-  try {
-    const response = await fetch(`https://api-adresse.data.gouv.fr/search/?limit=1&q=${encodeURIComponent(address)}`);
-    if (!response.ok) return null;
-
-    const data = (await response.json()) as {
-      features?: Array<{
-        properties?: { label?: string };
-        geometry?: { coordinates?: number[] };
-      }>;
-    };
-    const feature = data.features?.[0];
-    const lng = Number(feature?.geometry?.coordinates?.[0]);
-    const lat = Number(feature?.geometry?.coordinates?.[1]);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-
-    return {
-      address: feature?.properties?.label?.trim() || address,
-      lat,
-      lng,
-    };
-  } catch {
-    return null;
-  }
 }
 
 async function parse(fd: FormData) {

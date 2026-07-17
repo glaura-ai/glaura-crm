@@ -1,4 +1,4 @@
-import type { Metier, SalonStatus, SalonType, ActivityType, BookingTool } from "@/generated/prisma/enums";
+import type { Metier, SalonStatus, SalonType, ActivityType, BookingTool, ProspectSource } from "@/generated/prisma/enums";
 
 export const METIER_LABEL: Record<Metier, string> = {
   COIFFURE: "Coiffure",
@@ -60,6 +60,22 @@ export const BOOKING_LABEL: Record<BookingTool, string> = {
   PLANITY: "Planity",
   TREATWELL: "Treatwell",
   ACUITY: "Acuity",
+  BOOKSY: "Booksy",
+  FRESHA: "Fresha",
   SITE: "Site web",
   NONE: "—",
+};
+
+export const PROSPECT_SOURCE_LABEL: Record<ProspectSource, string> = {
+  PLANITY: "Planity",
+  TREATWELL: "Treatwell",
+  BOOKSY: "Booksy",
+  FRESHA: "Fresha",
+};
+
+export const PROSPECT_SOURCE_STYLE: Record<ProspectSource, string> = {
+  PLANITY: "bg-indigo-100 text-indigo-700",
+  TREATWELL: "bg-orange-100 text-orange-700",
+  BOOKSY: "bg-teal-100 text-teal-700",
+  FRESHA: "bg-fuchsia-100 text-fuchsia-700",
 };

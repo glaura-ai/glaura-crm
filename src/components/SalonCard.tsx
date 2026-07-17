@@ -1,18 +1,8 @@
 import Link from "next/link";
 import type { SalonListItem } from "@/lib/salons";
+import { Stars } from "@/components/Stars";
 import { METIER_LABEL, STATUS_LABEL, STATUS_STYLE, TYPE_STYLE } from "@/lib/labels";
 import { cn } from "@/lib/utils";
-
-function Stars({ rating }: { rating: number | null }) {
-  if (rating == null) return null;
-  const full = Math.round(rating);
-  return (
-    <span className="text-amber-400" title={`${rating}/5`}>
-      {"★".repeat(full)}
-      <span className="text-slate-200">{"★".repeat(5 - full)}</span>
-    </span>
-  );
-}
 
 export function SalonCard({ salon }: { salon: SalonListItem }) {
   return (
