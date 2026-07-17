@@ -15,7 +15,10 @@
     "email:jobs": "tsx scripts/process-email-jobs.ts",
     "email:worker": "tsx scripts/process-email-jobs.ts --loop",
     "onboard:jobs": "tsx scripts/process-onboarding-jobs.ts",
-    "onboard:worker": "tsx scripts/process-onboarding-jobs.ts --loop"
+    "onboard:worker": "tsx scripts/process-onboarding-jobs.ts --loop",
+    "prospect:sweep": "tsx scripts/prospect-sweep.ts",
+    "prospect:ig": "tsx scripts/prospect-enrich-ig.ts",
+    "prospect:test": "tsx scripts/prospect-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",

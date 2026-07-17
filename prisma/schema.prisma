@@ -49,6 +49,8 @@ enum BookingTool {
   PLANITY
   TREATWELL
   ACUITY
+  BOOKSY
+  FRESHA
   SITE
   NONE
 }
@@ -67,6 +69,32 @@ enum LeadSource {
   MANUAL
   AIRTABLE
   IMPORT
+  SCRAPE
+}
+
+// Prospection: salons discovered on public booking directories, not yet CRM leads.
+enum ProspectSource {
+  PLANITY
+  TREATWELL
+  BOOKSY
+  FRESHA
+}
+
+enum ProspectStatus {
+  NOUVEAU // discovered, available for a tournée
+  EN_TOURNEE // picked in a daily tournée
+  CONVERTI // promoted to a Salon lead
+  ECARTE // manually discarded
+  DEJA_CRM // matches a salon already in the CRM — excluded from tournées
+}
+
+// Instagram enrichment lifecycle (cross-validated against the salon).
+enum IgStatus {
+  A_FAIRE // not enriched yet
+  CONFIRME // account auto-confirmed by strong signals (booking link, name+location)
+  A_VALIDER // candidates found, needs a human click
+  INTROUVABLE // searched, no plausible account
+  ERREUR // enrichment failed for this prospect (retryable)
 }
 
 // Onboarding engine job lifecycle (mirrors the VPS result file).
@@ -108,6 +136,7 @@ model User {
   reminders      Reminder[]
   onboardingJobs OnboardingJob[]
   emailJobs      EmailJob[]
+  tournees       Tournee[]
 }
 
 model Salon {
@@ -161,6 +190,7 @@ model Salon {
   reminders      Reminder[]
   onboardingJobs OnboardingJob[]
   emailJobs      EmailJob[]
+  prospect       Prospect?       @relation("ProspectConversion")
 
   @@index([status])
   @@index([metier])
@@ -169,6 +199,63 @@ model Salon {
   @@index([assignedToId, priorityDate])
   @@index([nextActionAt])
   @@index([airtableBaseId])
+}
+
+// A salon discovered on a public booking directory (Planity/Treatwell/Booksy/Fresha).
+// Lives outside the Salon pipeline until converted; deduped by sourceUrl.
+model Prospect {
+  id     String  @id @default(cuid())
+  name   String
+  zone   String? // zone slug from src/lib/prospection/zones.ts (derived from postalCode)
+  metiers Metier[] @default([])
+
+  address    String?
+  postalCode String?
+  city       String?
+
+  source    ProspectSource
+  sourceUrl String         @unique // salon page on the source directory = booking link
+
+  rating      Float?
+  reviewCount Int    @default(0)
+
+  instagram          String?
+  instagramFollowers Int?
+  igCandidates       Json? // scored candidates [{username, followers, score, signals[]}]
+  igStatus           IgStatus  @default(A_FAIRE)
+  igCheckedAt        DateTime?
+
+  status         ProspectStatus @default(NOUVEAU)
+  matchedSalonId String? // existing CRM salon this prospect was matched to (DEJA_CRM)
+
+  salonId String? @unique // set when converted into a Salon lead
+  salon   Salon?  @relation("ProspectConversion", fields: [salonId], references: [id], onDelete: SetNull)
+
+  tourneeId String?
+  tournee   Tournee? @relation(fields: [tourneeId], references: [id], onDelete: SetNull)
+
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([zone, status, reviewCount])
+  @@index([status])
+  @@index([tourneeId])
+  @@index([igStatus])
+}
+
+// A daily prospecting round: 20-30 prospects in one zone, assigned to a commercial.
+model Tournee {
+  id           String    @id @default(cuid())
+  date         DateTime  @db.Date
+  zone         String
+  assignedToId String?
+  assignedTo   User?     @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdAt    DateTime  @default(now())
+  prospects    Prospect[]
+
+  @@unique([date, zone])
 }
 
 model Activity {
