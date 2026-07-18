@@ -11,11 +11,17 @@
  * Usage:
  *   npm run prospect:ig -- --zone=paris-11 --limit=25
  *
- * Env:
- *   - IG_COOKIES_PATH         — Netscape cookies.txt of a logged-in IG session
- *   - PROSPECT_IG_DELAY_MS    — base delay between IG calls (default 10000, ±30% jitter)
+ * Backend (auto-selected):
+ *   - GRAPH (preferred): set IG_GRAPH_TOKEN + IG_GRAPH_USER_ID → Business
+ *     Discovery. Official, no personal cookies, runs from the VPS.
+ *   - COOKIE (fallback): set IG_COOKIES_PATH (Netscape cookies.txt).
  *
- * The run stops cleanly on the first auth/rate-limit error (session dead,
+ * Env:
+ *   - IG_GRAPH_TOKEN / IG_GRAPH_USER_ID — Graph API Page token + our IG business id
+ *   - IG_COOKIES_PATH                   — Netscape cookies.txt of a logged-in session
+ *   - PROSPECT_IG_DELAY_MS              — base delay between IG calls (default 10000, ±30% jitter)
+ *
+ * The run stops cleanly on the first auth/rate-limit error (token expired,
  * 429, checkpoint) — remaining prospects stay A_FAIRE and are picked up on
  * the next run.
  */
@@ -31,14 +37,23 @@ function argValue(flag: string): string | undefined {
 
 async function main() {
   const { prisma } = await import("../src/lib/db");
-  const { enrichProspectIg } = await import("../src/lib/prospection/enrich-ig");
+  const { enrichProspectIg, igGraphConfig } = await import("../src/lib/prospection/enrich-ig");
   const { loadIgCookieHeader, IgAuthError, igDelayMs } = await import("../src/lib/prospection/instagram");
+  const { IgGraphAuthError, IgGraphRateLimitError } = await import("../src/lib/prospection/ig-graph");
   const { sleep } = await import("../src/lib/prospection/http");
 
   const zone = argValue("zone");
   const parsedLimit = Number(argValue("limit"));
-  const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(200, parsedLimit)) : 50;
-  const cookieHeader = loadIgCookieHeader();
+  const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(500, parsedLimit)) : 50;
+
+  // Prefer the official Graph API backend; fall back to session cookies.
+  const graph = igGraphConfig();
+  const cookieHeader = graph ? null : loadIgCookieHeader();
+  const auth = { graph, cookieHeader };
+  console.log(`[ig] backend: ${graph ? "Graph API (business_discovery)" : "cookies"}`);
+
+  const isFatal = (error: unknown) =>
+    error instanceof IgAuthError || error instanceof IgGraphAuthError || error instanceof IgGraphRateLimitError;
 
   const prospects = await prisma.prospect.findMany({
     where: {
@@ -60,7 +75,7 @@ async function main() {
   for (const [index, prospect] of prospects.entries()) {
     console.log(`[ig] ${index + 1}/${prospects.length} ${prospect.name}`);
     try {
-      const decision = await enrichProspectIg(prospect, cookieHeader, (m) => console.log(`[ig]${m}`));
+      const decision = await enrichProspectIg(prospect, auth, (m) => console.log(`[ig]${m}`));
       const now = new Date();
       // Never overwrite a manually set handle: if the confirmed account is a
       // DIFFERENT one, downgrade to A_VALIDER instead of mixing their data.
@@ -95,8 +110,9 @@ async function main() {
         console.log("[ig]   → introuvable");
       }
     } catch (error) {
-      if (error instanceof IgAuthError) {
-        console.error(`[ig] ARRÊT: ${error.message} (${prospects.length - index - 1} prospects non traités)`);
+      if (isFatal(error)) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[ig] ARRÊT: ${message} (${prospects.length - index - 1} prospects non traités)`);
         process.exitCode = 1;
         break;
       }
