@@ -2,6 +2,7 @@ import type { Metier, ProspectSource } from "@/generated/prisma/enums";
 import { convertProspect, discardProspect, releaseProspect, validateInstagram } from "@/lib/prospection/actions";
 import { METIER_LABEL, PROSPECT_SOURCE_LABEL, PROSPECT_SOURCE_STYLE } from "@/lib/labels";
 import type { IgCandidateJson, TourneeProspect } from "@/lib/prospection/queries";
+import { TIER_LABEL, TIER_STYLE } from "@/lib/prospection/tier";
 import { Stars } from "@/components/Stars";
 import { cn } from "@/lib/utils";
 
@@ -36,9 +37,17 @@ export function ProspectCard({ prospect }: { prospect: TourneeProspect }) {
           <h3 className="font-semibold text-slate-900">{prospect.name}</h3>
           <p className="text-sm text-slate-500">{prospect.address ?? `${prospect.postalCode ?? ""} ${prospect.city ?? ""}`}</p>
         </div>
-        <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-medium", PROSPECT_SOURCE_STYLE[source])}>
-          {PROSPECT_SOURCE_LABEL[source]}
-        </span>
+        <div className="flex shrink-0 items-center gap-1">
+          <span
+            className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", TIER_STYLE[prospect.tier])}
+            title={`Tier ${prospect.tier} — ${TIER_LABEL[prospect.tier]}`}
+          >
+            T{prospect.tier}
+          </span>
+          <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", PROSPECT_SOURCE_STYLE[source])}>
+            {PROSPECT_SOURCE_LABEL[source]}
+          </span>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-sm">

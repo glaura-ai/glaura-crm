@@ -226,6 +226,10 @@ model Prospect {
   igStatus           IgStatus  @default(A_FAIRE)
   igCheckedAt        DateTime?
 
+  googleRating      Float? // Google Business Profile (deferred — filled later)
+  googleReviewCount Int?
+  tier              Int    @default(1) // 1=Base … 4=Référence (see lib/prospection/tier.ts)
+
   status         ProspectStatus @default(NOUVEAU)
   matchedSalonId String? // existing CRM salon this prospect was matched to (DEJA_CRM)
 
@@ -241,6 +245,7 @@ model Prospect {
   updatedAt   DateTime @updatedAt
 
   @@index([zone, status, reviewCount])
+  @@index([zone, status, tier])
   @@index([status])
   @@index([tourneeId])
   @@index([igStatus])
