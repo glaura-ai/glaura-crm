@@ -59,6 +59,10 @@ export function PipelineFilters({
             Type {t}
           </Chip>
         ))}
+        <span className="mx-1 w-px self-stretch bg-slate-200" />
+        <Chip active={params.source === "SCRAPE"} href={toggleHref(params, "source", "SCRAPE")}>
+          Prospection
+        </Chip>
       </div>
       {owners.length > 0 && (
         <div className="flex flex-wrap gap-1.5">

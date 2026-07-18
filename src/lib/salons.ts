@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { activeDailyPriorityDateFilter } from "@/lib/dailyPriority";
-import type { Metier, SalonStatus, SalonType } from "@/generated/prisma/enums";
+import type { LeadSource, Metier, SalonStatus, SalonType } from "@/generated/prisma/enums";
 
 export type ViewerScope = {
   id: string;
@@ -13,6 +13,7 @@ export type SalonFilters = {
   type?: string;
   owner?: string;
   arr?: string;
+  source?: string; // "SCRAPE" → salons converted from prospecting
   prio?: string; // "today" → active daily priorities, including carried-over pins
   q?: string;
 };
@@ -32,6 +33,7 @@ export async function getSalons(f: SalonFilters, viewer?: ViewerScope) {
       ...(f.type ? { type: f.type as SalonType } : {}),
       ...(ownerId ? { assignedToId: ownerId } : {}),
       ...(f.arr ? { arrondissement: f.arr } : {}),
+      ...(f.source ? { source: f.source as LeadSource } : {}),
       ...(f.prio === "today" ? { priorityDate: activeDailyPriorityDateFilter() } : {}),
       ...(q
         ? {
