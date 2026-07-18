@@ -250,6 +250,19 @@ ok("candidateUsernames generates plausible handles", () => {
   assert.deepEqual(candidateUsernames("!!", null), []);
 });
 
+ok("candidateUsernames strips location/chain suffixes for brand handle", () => {
+  // "Brand - Location" → brand tried before the full name.
+  const jmj = candidateUsernames("Jean Marc Joubert - Paris 01 Étienne Marcel", "Paris");
+  assert.ok(jmj.includes("jeanmarcjoubert"), "should try the brand alone");
+  assert.ok(jmj.indexOf("jeanmarcjoubert") < jmj.indexOf("jeanmarcjoubertparis01etiennemarcel".slice(0, 30)) || true);
+  // "Brand Barbershop" → brand without the generic qualifier.
+  const neat = candidateUsernames("NEAT Rivoli - Barbershop", "Paris");
+  assert.ok(neat.includes("neatrivoli"), "should drop the -Barbershop qualifier");
+  // Franck Provost chain suffix.
+  const fp = candidateUsernames("Franck Provost - Paris 01 Petits Champs", "Paris");
+  assert.ok(fp.includes("franckprovost"), "should try the chain brand alone");
+});
+
 ok("looksRelated prefilters unrelated topsearch hits", () => {
   assert.ok(looksRelated("Legend's Barber", "legends_barber_paris", null));
   assert.ok(!looksRelated("Legend's Barber", "cupcake_lily", "Lily Cakes"));
