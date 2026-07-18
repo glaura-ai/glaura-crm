@@ -88,9 +88,12 @@ export async function getSalonOwners() {
   });
 }
 
-// Everyone a salon can be (re)assigned to — used by the admin-only assignee picker.
+// Everyone a salon can be (re)assigned to — used by the assignee pickers.
+// Excludes deactivated accounts (ex-employees, dev/test) so they no longer
+// appear as options; their historical salon assignments are untouched.
 export async function getAssignableUsers() {
   return prisma.user.findMany({
+    where: { active: true },
     orderBy: { name: "asc" },
     select: { id: true, name: true, email: true },
   });
