@@ -13,6 +13,7 @@ import { freshaTargets } from "../src/lib/prospection/sources/fresha";
 import { planityMaxPage, planityPageUrl, planityTargets } from "../src/lib/prospection/sources/planity";
 import { treatwellMaxPage, treatwellPageUrl, treatwellTargets } from "../src/lib/prospection/sources/treatwell";
 import { candidateUsernames, decide, looksRelated, scoreCandidate } from "../src/lib/prospection/ig-match";
+import { combinedReviews, computeTier, tierForProspect } from "../src/lib/prospection/tier";
 import { cookieHeaderFromNetscape } from "../src/lib/prospection/instagram";
 import { matchCrmSalon, normalizeBookingUrl, normalizeName, postalFromArrondissement } from "../src/lib/prospection/match";
 import { ZONE_BY_SLUG, ZONES, zoneForPostalCode } from "../src/lib/prospection/zones";
@@ -280,6 +281,24 @@ ok("cookieHeaderFromNetscape builds header and requires sessionid", () => {
   assert.ok(header.includes("csrftoken=TOK"));
   assert.ok(!header.includes("foo=bar"));
   assert.throws(() => cookieHeaderFromNetscape(".instagram.com\tTRUE\t/\tTRUE\t0\tcsrftoken\tTOK"));
+});
+
+// --- tiers ---------------------------------------------------------------------
+
+ok("computeTier ascending thresholds (T1 base → T4)", () => {
+  assert.equal(computeTier(60, null), 1); // in pool but <100 reviews
+  assert.equal(computeTier(120, null), 2); // ≥100 reviews, followers unknown
+  assert.equal(computeTier(120, 500), 2); // ≥100 reviews, <1000 followers
+  assert.equal(computeTier(120, 1500), 3); // ≥100 reviews AND ≥1000 followers
+  assert.equal(computeTier(300, 5000), 4); // ≥250 reviews AND ≥3000 followers
+  assert.equal(computeTier(300, 1500), 3); // 3000 followers not met → stays T3
+  assert.equal(computeTier(90, 9000), 1); // <100 reviews → base regardless of followers
+});
+
+ok("combinedReviews adds Google when present", () => {
+  assert.equal(combinedReviews(60, null), 60);
+  assert.equal(combinedReviews(60, 50), 110);
+  assert.equal(tierForProspect({ reviewCount: 60, googleReviewCount: 50, instagramFollowers: null }), 2);
 });
 
 console.log(`\n${passed} tests OK`);

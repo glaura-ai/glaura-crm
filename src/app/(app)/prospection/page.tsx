@@ -88,13 +88,26 @@ export default async function ProspectionPage({
               className="w-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-rose-300"
             />
           </label>
+          <label className="flex flex-col gap-1 text-sm text-slate-600">
+            Tier min
+            <select
+              name="minTier"
+              defaultValue="1"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-rose-300"
+            >
+              <option value="1">Tous</option>
+              <option value="2">T2+ (Actif)</option>
+              <option value="3">T3+ (Établi)</option>
+              <option value="4">T4 (Référence)</option>
+            </select>
+          </label>
           <button className="rounded-lg bg-rose-500 px-4 py-2 text-sm font-medium text-white hover:bg-rose-600">
             Générer la tournée
           </button>
         </form>
         <p className="mt-2 text-xs text-slate-400">
-          Sélection des salons les plus avisés (≥ 50 avis) de la zone, hors salons déjà dans le CRM. Pool alimenté par{" "}
-          <code className="rounded bg-slate-100 px-1">npm run prospect:sweep</code>.
+          Sélection triée par tier (T1 base → T4 référence, selon avis + followers), hors salons déjà dans le CRM. Pool
+          alimenté par <code className="rounded bg-slate-100 px-1">npm run prospect:sweep</code>.
         </p>
       </section>
 

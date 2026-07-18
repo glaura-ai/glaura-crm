@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import type { CrawledProspect, CrawlLog } from "@/lib/prospection/crawl";
 import { matchCrmSalon, normalizeBookingUrl, normalizeName, postalFromArrondissement, type CrmIndex } from "@/lib/prospection/match";
+import { tierForProspect } from "@/lib/prospection/tier";
 
 // Persists crawled listings as Prospect rows:
 //  - keeps only salons with enough reviews (PROSPECT_MIN_REVIEWS, default 50)
@@ -65,7 +66,14 @@ export async function upsertProspects(
   const index = await loadCrmIndex();
   const existingRows = await prisma.prospect.findMany({
     where: { sourceUrl: { in: kept.map((p) => p.sourceUrl) } },
-    select: { id: true, sourceUrl: true, status: true, metiers: true },
+    select: {
+      id: true,
+      sourceUrl: true,
+      status: true,
+      metiers: true,
+      instagramFollowers: true,
+      googleReviewCount: true,
+    },
   });
   const existingByUrl = new Map(existingRows.map((row) => [row.sourceUrl, row]));
 
@@ -86,6 +94,7 @@ export async function upsertProspects(
           sourceUrl: prospect.sourceUrl,
           status: matchedSalonId ? "DEJA_CRM" : "NOUVEAU",
           matchedSalonId,
+          tier: tierForProspect({ reviewCount: prospect.reviewCount, googleReviewCount: null, instagramFollowers: null }),
           firstSeenAt: now,
         },
       });
@@ -102,6 +111,12 @@ export async function upsertProspects(
         metiers: [...new Set([...existing.metiers, ...prospect.metiers])],
         status,
         matchedSalonId,
+        // Recompute with the refreshed review count + known followers/Google.
+        tier: tierForProspect({
+          reviewCount: prospect.reviewCount,
+          googleReviewCount: existing.googleReviewCount,
+          instagramFollowers: existing.instagramFollowers,
+        }),
       },
     });
     counts.updated++;

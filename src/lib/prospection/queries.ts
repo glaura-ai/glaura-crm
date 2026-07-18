@@ -48,6 +48,7 @@ export type TourneeProspect = {
   instagramFollowers: number | null;
   igStatus: string;
   igCandidates: unknown;
+  tier: number;
   status: string;
 };
 
@@ -67,7 +68,7 @@ export async function getTodaysTournees(today = new Date()): Promise<TourneeWith
     include: {
       assignedTo: { select: { id: true, name: true, email: true } },
       prospects: {
-        orderBy: { reviewCount: "desc" },
+        orderBy: [{ tier: "desc" }, { reviewCount: "desc" }],
         select: {
           id: true,
           name: true,
@@ -83,6 +84,7 @@ export async function getTodaysTournees(today = new Date()): Promise<TourneeWith
           instagramFollowers: true,
           igStatus: true,
           igCandidates: true,
+          tier: true,
           status: true,
         },
       },

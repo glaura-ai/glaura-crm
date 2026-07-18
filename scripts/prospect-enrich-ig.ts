@@ -40,6 +40,7 @@ async function main() {
   const { enrichProspectIg, igGraphConfig } = await import("../src/lib/prospection/enrich-ig");
   const { loadIgCookieHeader, IgAuthError, igDelayMs } = await import("../src/lib/prospection/instagram");
   const { IgGraphAuthError, IgGraphRateLimitError } = await import("../src/lib/prospection/ig-graph");
+  const { tierForProspect } = await import("../src/lib/prospection/tier");
   const { sleep } = await import("../src/lib/prospection/http");
 
   const zone = argValue("zone");
@@ -68,7 +69,16 @@ async function main() {
     // Today's tournées first, then the most reviewed.
     orderBy: [{ status: "desc" }, { reviewCount: "desc" }],
     take: limit,
-    select: { id: true, name: true, sourceUrl: true, postalCode: true, city: true, instagram: true },
+    select: {
+      id: true,
+      name: true,
+      sourceUrl: true,
+      postalCode: true,
+      city: true,
+      instagram: true,
+      reviewCount: true,
+      googleReviewCount: true,
+    },
   });
   console.log(`[ig] ${prospects.length} prospects à enrichir${zone ? ` (zone ${zone})` : ""}`);
 
@@ -95,6 +105,12 @@ async function main() {
             igCandidates: decision.candidates,
             igStatus: "CONFIRME",
             igCheckedAt: now,
+            // Followers just became known → the prospect may move up a tier.
+            tier: tierForProspect({
+              reviewCount: prospect.reviewCount,
+              googleReviewCount: prospect.googleReviewCount,
+              instagramFollowers: decision.best.followers,
+            }),
           },
         });
         console.log(`[ig]   → CONFIRMÉ @${decision.best.username} (${decision.best.followers ?? "?"} followers)`);

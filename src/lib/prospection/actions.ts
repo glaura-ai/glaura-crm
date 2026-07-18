@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db";
 import { startOfDay } from "@/lib/dailyPriority";
 import { uniqueSalonSlug } from "@/lib/slugs";
 import { ZONE_BY_SLUG } from "@/lib/prospection/zones";
+import { tierForProspect } from "@/lib/prospection/tier";
 import type { BookingTool, Metier, ProspectSource } from "@/generated/prisma/enums";
 
 async function requireUser() {
@@ -34,6 +35,7 @@ const generateSchema = z.object({
   zone: z.string().min(1),
   assignedToId: z.string().optional(),
   size: z.coerce.number().int().min(5).max(30).default(25),
+  minTier: z.coerce.number().int().min(1).max(4).default(1),
 });
 
 // Create today's tournée for a zone: pick the top-N available prospects
@@ -45,6 +47,7 @@ export async function generateTournee(fd: FormData) {
       zone: fd.get("zone"),
       assignedToId: fd.get("assignedToId")?.toString() || undefined,
       size: fd.get("size") || undefined,
+      minTier: fd.get("minTier") || undefined,
     });
     if (!ZONE_BY_SLUG.has(d.zone)) throw new Error(`Zone inconnue: ${d.zone}`);
 
@@ -52,13 +55,20 @@ export async function generateTournee(fd: FormData) {
     const existing = await prisma.tournee.findUnique({ where: { date_zone: { date: today, zone: d.zone } } });
     if (existing) throw new Error("Une tournée existe déjà aujourd'hui pour cette zone.");
 
+    // Best tiers first, then most reviewed within a tier.
     const picked = await prisma.prospect.findMany({
-      where: { zone: d.zone, status: "NOUVEAU" },
-      orderBy: { reviewCount: "desc" },
+      where: { zone: d.zone, status: "NOUVEAU", tier: { gte: d.minTier } },
+      orderBy: [{ tier: "desc" }, { reviewCount: "desc" }],
       take: d.size,
       select: { id: true },
     });
-    if (picked.length === 0) throw new Error("Aucun prospect disponible dans cette zone — lance un sweep d'abord.");
+    if (picked.length === 0) {
+      throw new Error(
+        d.minTier > 1
+          ? `Aucun prospect de tier ≥ ${d.minTier} dans cette zone.`
+          : "Aucun prospect disponible dans cette zone — lance un sweep d'abord.",
+      );
+    }
 
     await prisma.$transaction(async (tx) => {
       const tournee = await tx.tournee.create({
@@ -108,7 +118,7 @@ export async function validateInstagram(fd: FormData) {
 
     const prospect = await prisma.prospect.findUniqueOrThrow({
       where: { id: d.prospectId },
-      select: { igCandidates: true },
+      select: { igCandidates: true, reviewCount: true, googleReviewCount: true },
     });
     const candidates = Array.isArray(prospect.igCandidates) ? prospect.igCandidates : [];
     const chosen = candidates.find(
@@ -123,6 +133,11 @@ export async function validateInstagram(fd: FormData) {
         instagramFollowers: chosen.followers ?? null,
         igStatus: "CONFIRME",
         igCheckedAt: new Date(),
+        tier: tierForProspect({
+          reviewCount: prospect.reviewCount,
+          googleReviewCount: prospect.googleReviewCount,
+          instagramFollowers: chosen.followers ?? null,
+        }),
       },
     });
   });
