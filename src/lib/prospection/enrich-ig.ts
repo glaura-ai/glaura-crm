@@ -27,7 +27,10 @@ import type { CrawlLog } from "@/lib/prospection/crawl";
 //
 // Budget: jitter-paced, stops early once a candidate is definitive.
 
-const MAX_PROFILE_FETCHES = 4;
+// Graph API calls are official + cheap, so we can probe more handle guesses;
+// the cookie backend is rate-sensitive, so it stays conservative.
+const MAX_GRAPH_LOOKUPS = 8;
+const MAX_COOKIE_FETCHES = 4;
 
 async function scoreViaGraph(
   prospect: IgProspectFacts,
@@ -35,7 +38,7 @@ async function scoreViaGraph(
   log: CrawlLog,
 ): Promise<ScoredCandidate[]> {
   const scored: ScoredCandidate[] = [];
-  for (const handle of candidateUsernames(prospect.name, prospect.city).slice(0, MAX_PROFILE_FETCHES)) {
+  for (const handle of candidateUsernames(prospect.name, prospect.city).slice(0, MAX_GRAPH_LOOKUPS)) {
     await sleep(igDelayMs());
     const profile = await businessDiscovery(handle, config);
     if (!profile) continue;
@@ -64,7 +67,7 @@ async function discoverProfilesViaCookies(
   }
 
   const profiles: IgProfile[] = [];
-  for (const username of usernames.slice(0, MAX_PROFILE_FETCHES)) {
+  for (const username of usernames.slice(0, MAX_COOKIE_FETCHES)) {
     await sleep(igDelayMs());
     const profile = await fetchProfile(username, cookieHeader);
     if (profile) profiles.push(profile);

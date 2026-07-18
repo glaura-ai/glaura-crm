@@ -44,7 +44,11 @@ async function main() {
 
   const zone = argValue("zone");
   const parsedLimit = Number(argValue("limit"));
-  const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(500, parsedLimit)) : 50;
+  const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(1000, parsedLimit)) : 50;
+  // --retry also re-processes salons previously marked INTROUVABLE (e.g. after
+  // improving handle guessing). CONFIRME/A_VALIDER are never re-touched.
+  const retry = process.argv.includes("--retry");
+  const igStatuses = retry ? ["A_FAIRE", "ERREUR", "INTROUVABLE"] : ["A_FAIRE", "ERREUR"];
 
   // Prefer the official Graph API backend; fall back to session cookies.
   const graph = igGraphConfig();
@@ -57,7 +61,7 @@ async function main() {
 
   const prospects = await prisma.prospect.findMany({
     where: {
-      igStatus: { in: ["A_FAIRE", "ERREUR"] },
+      igStatus: { in: igStatuses as ("A_FAIRE" | "ERREUR" | "INTROUVABLE")[] },
       status: { in: ["NOUVEAU", "EN_TOURNEE"] },
       ...(zone ? { zone } : {}),
     },

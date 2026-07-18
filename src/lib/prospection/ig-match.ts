@@ -175,35 +175,63 @@ export function looksRelated(salonName: string, username: string, fullName: stri
   return tokens.some((token) => haystack.includes(token));
 }
 
-// Fallback discovery when Instagram search is unavailable for the session:
-// guess plausible handles from the salon name and probe them one by one
-// (web_profile_info 404s cheaply on misses). Cross-validation then filters
-// out same-name businesses elsewhere in the world.
-export function candidateUsernames(name: string, city: string | null): string[] {
-  const tokens = name
+function slugTokens(text: string): string[] {
+  return text
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/['\u2019`]/g, "") // "Legend's" \u2192 "legends", not "legend" + "s"
     .toLowerCase()
     .split(/[^a-z0-9]+/)
     .filter((token) => token.length >= 2);
-  if (tokens.length === 0) return [];
+}
 
-  const joined = tokens.join("");
+// Trailing tokens that are location/qualifier noise, not part of the brand
+// handle: "Brand - Barbershop", "Brand Academy", "Brand Paris 01".
+const TRAILING_NOISE = new Set([
+  ...GENERIC_TOKENS,
+  "barbershop",
+  "shop",
+  "academy",
+  "by",
+  "chez",
+  "le",
+  "la",
+  "les",
+  "du",
+  "de",
+  "des",
+]);
+
+function brandTokens(tokens: string[]): string[] {
+  let end = tokens.length;
+  while (end > 1 && (TRAILING_NOISE.has(tokens[end - 1]) || /^\d+$/.test(tokens[end - 1]))) end--;
+  return tokens.slice(0, end);
+}
+
+// Guess plausible IG handles for a salon, best-first. Business Discovery (and
+// the cookie fallback) probes each until one resolves; cross-validation then
+// filters out same-name businesses elsewhere. Handles the common directory
+// naming "Brand - Location/Chain qualifier" by also trying the brand alone.
+export function candidateUsernames(name: string, city: string | null): string[] {
+  // Cut the chain/location qualifier after the first separator.
+  const core = name.split(/\s[-\u2013|]\s|,/)[0];
   const citySuffix = (city ?? "paris")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "");
 
-  const guesses = [
-    joined,
-    tokens.join("_"),
-    tokens.join("."),
-    `${joined}${citySuffix}`,
-    `${joined}_${citySuffix}`,
-    `${joined}.${citySuffix}`,
-  ];
+  const guesses: string[] = [];
+  // Try the trimmed brand first (highest hit rate), then the full name.
+  for (const base of [core, name]) {
+    const tokens = slugTokens(base);
+    if (tokens.length === 0) continue;
+    for (const group of [brandTokens(tokens), tokens]) {
+      if (group.length === 0) continue;
+      const joined = group.join("");
+      guesses.push(joined, `${joined}${citySuffix}`, group.join("_"), group.join("."), `${joined}_${citySuffix}`);
+    }
+  }
   // IG usernames are capped at 30 chars — longer guesses can't exist.
   return [...new Set(guesses)].filter((guess) => guess.length >= 3 && guess.length <= 30);
 }
