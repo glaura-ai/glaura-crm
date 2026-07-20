@@ -16,6 +16,7 @@
     "email:worker": "tsx scripts/process-email-jobs.ts --loop",
     "onboard:jobs": "tsx scripts/process-onboarding-jobs.ts",
     "onboard:worker": "tsx scripts/process-onboarding-jobs.ts --loop",
+    "onboard:reels": "tsx scripts/onboard-reels.ts",
     "prospect:sweep": "tsx scripts/prospect-sweep.ts",
     "prospect:ig": "tsx scripts/prospect-enrich-ig.ts",
     "prospect:test": "tsx scripts/prospect-test.ts"
