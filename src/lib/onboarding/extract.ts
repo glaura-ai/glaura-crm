@@ -392,31 +392,51 @@ function nameTokens(value: string): string[] {
     .filter((t) => t.length >= 3 && !NAME_STOPWORDS.has(t));
 }
 
-/**
- * Extracts the real practitioners from Planity's "Collaborateurs" card:
- *   .business_calendars_calendarItem-* > … .business_calendars_text-* = name
- * Deterministic (no LLM). Drops service-named booking calendars (e.g.
- * "Soin Cils") whose every word is a generic beauty term, keeping person-like
- * names (e.g. "Jiji"). Deduped.
- */
-export function extractPlanityCollaborateurs($: CheerioAPI): string[] {
-  const isServiceCalendar = (name: string): boolean => {
-    const tokens = nameTokens(name);
-    if (tokens.length === 0) return true; // no usable name
-    return tokens.every((t) => SERVICE_CALENDAR_WORDS.has(t));
-  };
+/** A name is a service-named calendar when every word is a generic beauty term. */
+function isServiceCalendar(name: string): boolean {
+  const tokens = nameTokens(name);
+  if (tokens.length === 0) return true; // no usable name
+  return tokens.every((t) => SERVICE_CALENDAR_WORDS.has(t));
+}
 
+/** Trim, dedupe, and drop service-named calendars from raw collaborateur names. */
+function keepRealStaffNames(rawNames: readonly string[]): string[] {
   const names: string[] = [];
   const seen = new Set<string>();
-  $('[class*="business_calendars_calendarItem"]').each((_, el) => {
-    const name = $(el).find('[class*="business_calendars_text"]').first().text().trim();
+  for (const raw of rawNames) {
+    const name = (raw || "").trim();
     const key = normKey(name);
-    if (!name || seen.has(key)) return;
+    if (!name || seen.has(key) || isServiceCalendar(name)) continue;
     seen.add(key);
-    if (isServiceCalendar(name)) return;
     names.push(name);
-  });
+  }
   return names;
+}
+
+/**
+ * Real practitioners from Planity's "Collaborateurs" card:
+ *   .business_calendars_calendarItem-* > … .business_calendars_text-* = name
+ * Deterministic (no LLM); drops service-named calendars (e.g. "Soin Cils").
+ */
+export function extractPlanityCollaborateurs($: CheerioAPI): string[] {
+  const raw: string[] = [];
+  $('[class*="business_calendars_calendarItem"]').each((_, el) => {
+    raw.push($(el).find('[class*="business_calendars_text"]').first().text());
+  });
+  return keepRealStaffNames(raw);
+}
+
+/**
+ * Real practitioners from Treatwell's "Rencontrez l'équipe" section:
+ *   .VenueTeamSection… .TeamListItemHeading-module--name-* = name (e.g. "Thiba").
+ * Not in the page JSON-LD, so read from the DOM. Deterministic; same filter.
+ */
+export function extractTreatwellStaff($: CheerioAPI): string[] {
+  const raw: string[] = [];
+  $('[class*="TeamListItemHeading-module--name"]').each((_, el) => {
+    raw.push($(el).text());
+  });
+  return keepRealStaffNames(raw);
 }
 
 function parsePlanity($: CheerioAPI): TrimmedSalonData {
@@ -610,8 +630,8 @@ function parseTreatwell($: CheerioAPI): TrimmedSalonData {
     images: Array.from(images).slice(0, MAX_IMAGES),
     hoursLines: extractTreatwellHours(business),
     services: extractTreatwellServices(business),
-    // Best-effort only — see SalonExtractSchema.staff.
-    staff: [],
+    // Real practitioners from the "Rencontrez l'équipe" DOM section (not in JSON-LD).
+    staff: extractTreatwellStaff($),
     reviews,
   };
 }
