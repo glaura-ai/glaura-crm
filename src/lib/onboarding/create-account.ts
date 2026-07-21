@@ -58,6 +58,7 @@ import { geocode } from "./geocode";
 import { hoursToTiming, type Timing } from "./hours";
 import { rehostSalonImages } from "./images";
 import { maybeSendWelcomeEmail } from "./welcome-email";
+import { maybeSendMagicLinkEmail } from "./magic-link";
 import type { OnboardingHints, OnboardingOverrides, OnboardingResult } from "@/lib/onboarding";
 
 const EMAIL_DOMAIN = GLAURA_EMAIL_DOMAIN;
@@ -803,10 +804,13 @@ export async function createDisabledSalonAccount(
     warnings,
   );
 
-  // (i) Onboarding welcome email — only for real (non-@glaura.fr) logins, so
-  // the salon receives its credentials + next steps. Non-fatal: a send failure
-  // is recorded as a warning, never aborts the (already complete) onboarding.
-  const welcome = await maybeSendWelcomeEmail({ email, password, companyUserName: slug, salonName: name });
+  // (i) Onboarding email — only for real (non-@glaura.fr) logins. Self-serve
+  // jobs (magicLinkSignIn) get the passwordless magic-link email; everyone else
+  // gets the credentials email. Non-fatal: a send failure is a warning, never
+  // aborts the (already complete) onboarding.
+  const welcome = overrides?.magicLinkSignIn
+    ? await maybeSendMagicLinkEmail({ uid, email, salonName: name })
+    : await maybeSendWelcomeEmail({ email, password, companyUserName: slug, salonName: name });
   if (welcome.error) {
     warnings.push(`Welcome email failed for ${email}: ${welcome.error}`);
   }
