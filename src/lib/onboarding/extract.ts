@@ -379,6 +379,8 @@ const SERVICE_CALENDAR_WORDS = new Set([
   "lash", "lashes", "brow", "brows", "microblading", "micropigmentation",
   "peeling", "teint", "french", "capillaire", "defrisage", "tresse", "tresses",
   "tissage", "perruque", "onglerie", "esthetique", "epilations",
+  // Booking-slot calendars that aren't a person.
+  "rdv", "rendez", "vous", "dispo", "disponibilite", "libre", "reservation",
 ]);
 
 // French joining words to drop when tokenising a name.
