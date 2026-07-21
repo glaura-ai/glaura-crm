@@ -363,6 +363,60 @@ function extractPlanityServices($: CheerioAPI): TrimmedService[] {
   return services;
 }
 
+// Generic beauty-service words that mark a Planity "booking calendar" named
+// after a service (e.g. "Soin Cils") rather than a real practitioner. Curated
+// (NOT derived from the salon's own services — practitioners are often named in
+// service titles, which would wrongly filter them out). A name is treated as a
+// service calendar only when *every* one of its words is in this set.
+const SERVICE_CALENDAR_WORDS = new Set([
+  "soin", "soins", "cil", "cils", "ongle", "ongles", "coiffure", "coiffeur",
+  "coloration", "coupe", "brushing", "epilation", "epil", "cire", "massage",
+  "maquillage", "makeup", "visage", "corps", "spa", "regard", "rehaussement",
+  "extension", "extensions", "pose", "depose", "teinture", "sourcil", "sourcils",
+  "manucure", "pedicure", "beaute", "institut", "forfait", "prestation", "gel",
+  "vernis", "semi", "permanente", "lissage", "balayage", "meche", "meches",
+  "chignon", "barbe", "barbier", "hammam", "gommage", "modelage", "nail", "nails",
+  "lash", "lashes", "brow", "brows", "microblading", "micropigmentation",
+  "peeling", "teint", "french", "capillaire", "defrisage", "tresse", "tresses",
+  "tissage", "perruque", "onglerie", "esthetique", "epilations",
+]);
+
+// French joining words to drop when tokenising a name.
+const NAME_STOPWORDS = new Set(["de", "des", "du", "la", "le", "les", "et", "aux", "au"]);
+
+function nameTokens(value: string): string[] {
+  return normKey(value)
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length >= 3 && !NAME_STOPWORDS.has(t));
+}
+
+/**
+ * Extracts the real practitioners from Planity's "Collaborateurs" card:
+ *   .business_calendars_calendarItem-* > … .business_calendars_text-* = name
+ * Deterministic (no LLM). Drops service-named booking calendars (e.g.
+ * "Soin Cils") whose every word is a generic beauty term, keeping person-like
+ * names (e.g. "Jiji"). Deduped.
+ */
+export function extractPlanityCollaborateurs($: CheerioAPI): string[] {
+  const isServiceCalendar = (name: string): boolean => {
+    const tokens = nameTokens(name);
+    if (tokens.length === 0) return true; // no usable name
+    return tokens.every((t) => SERVICE_CALENDAR_WORDS.has(t));
+  };
+
+  const names: string[] = [];
+  const seen = new Set<string>();
+  $('[class*="business_calendars_calendarItem"]').each((_, el) => {
+    const name = $(el).find('[class*="business_calendars_text"]').first().text().trim();
+    const key = normKey(name);
+    if (!name || seen.has(key)) return;
+    seen.add(key);
+    if (isServiceCalendar(name)) return;
+    names.push(name);
+  });
+  return names;
+}
+
 function parsePlanity($: CheerioAPI): TrimmedSalonData {
   const ld = extractPlanityLdJson($);
 
@@ -410,6 +464,8 @@ function parsePlanity($: CheerioAPI): TrimmedSalonData {
     };
   });
 
+  const services = extractPlanityServices($);
+
   return {
     name,
     address,
@@ -417,9 +473,10 @@ function parsePlanity($: CheerioAPI): TrimmedSalonData {
     bio,
     images: Array.from(images).slice(0, MAX_IMAGES),
     hoursLines,
-    services: extractPlanityServices($),
-    // The expander does not reliably reveal staff for Planity; best-effort only.
-    staff: [],
+    services,
+    // Real practitioners from the Collaborateurs card (service-named calendars
+    // filtered out). The authoritative value is re-derived in mergePlanityOptions.
+    staff: extractPlanityCollaborateurs($),
     reviews,
   };
 }
@@ -696,5 +753,8 @@ function mergePlanityOptions(parsed: SalonExtract, html: string): SalonExtract {
     };
   });
 
-  return { ...parsed, services };
+  // Re-derive staff deterministically from the DOM (authoritative over Haiku).
+  const staff = extractPlanityCollaborateurs($);
+
+  return { ...parsed, services, staff };
 }
