@@ -30,10 +30,16 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const BodySchema = z.object({
-  /** Firebase uid of the account the portal already created. */
-  targetUid: z.string().min(1),
-  /** Salon login email — CRM contact + job trace. */
+  /**
+   * Firebase uid of an account the portal already created → ENRICH mode.
+   * Omit it → CREATE mode: the worker provisions the live account itself
+   * (self-serve form flow) and sends the passwordless magic-link email.
+   */
+  targetUid: z.string().min(1).optional(),
+  /** Salon login email — CRM contact + job trace + account login. */
   email: z.string().email(),
+  /** Contact person's name (create mode → account displayName hint). */
+  contactName: z.string().trim().optional(),
   /** Display name → Salon.name and the unique CRM slug. */
   salonName: z.string().min(1),
   /** Booking-page URL to scrape (Planity/Treatwell/Booksy/site). */
@@ -105,23 +111,34 @@ export async function POST(req: NextRequest) {
   }
   const body = parsed.data;
   const { bookingTool, sourceType } = detectBookingTool(body.bookingUrl);
+  const isEnrich = Boolean(body.targetUid);
 
-  // Idempotency: one self-serve Salon per portal account (targetUid). A retry of
-  // the same wizard submission re-enqueues against the existing salon row rather
-  // than duplicating it.
+  // Idempotency key: the portal uid in enrich mode, else the login email in
+  // create mode. A retry re-enqueues against the same Salon row, never a dupe.
+  const externalRef = isEnrich ? `self_serve:${body.targetUid}` : `self_serve_email:${body.email.toLowerCase()}`;
   const existingSalon = await prisma.salon.findFirst({
-    where: { externalRef: `self_serve:${body.targetUid}` },
+    where: { externalRef },
     select: { id: true },
   });
 
-  const config: OnboardingOverrides = {
-    mode: "enrich",
-    targetUid: body.targetUid,
-    loginEmail: body.email,
-    enable: true,
-    agentCount: body.agentCount ?? 0,
-    reviewTarget: body.reviewTarget ?? 0,
-  };
+  // Enrich: attach the catalog onto the portal-created account.
+  // Create: the worker provisions the live account + sends the magic-link email.
+  const config: OnboardingOverrides = isEnrich
+    ? {
+        mode: "enrich",
+        targetUid: body.targetUid,
+        loginEmail: body.email,
+        enable: true,
+        agentCount: body.agentCount ?? 0,
+        reviewTarget: body.reviewTarget ?? 0,
+      }
+    : {
+        loginEmail: body.email,
+        enable: true,
+        agentCount: body.agentCount ?? 0,
+        reviewTarget: body.reviewTarget ?? 0,
+        magicLinkSignIn: true,
+      };
 
   try {
     const salonId =
@@ -133,12 +150,13 @@ export async function POST(req: NextRequest) {
             slug: await reserveSalonSlug(slugify(body.salonName)),
             address: body.address ?? null,
             phone: body.phone ?? null,
+            contactName: body.contactName ?? null,
             contactEmail: body.email,
             instagram: body.instagramHandle ?? null,
             bookingTool,
             bookingUrl: body.bookingUrl,
             source: "IMPORT",
-            externalRef: `self_serve:${body.targetUid}`,
+            externalRef,
             status: "SIGNE",
             accountStatusLabel: "self_serve",
           },

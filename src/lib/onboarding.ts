@@ -65,6 +65,13 @@ export type OnboardingOverrides = {
   agentCount?: number | null;
   /** Total number of 5★ reviews to end up with (real Planity reviews first, then filled). */
   reviewTarget?: number | null;
+  /**
+   * When true, the create path skips the plaintext-password welcome email and
+   * instead mints a single-use sign-in token + sends the passwordless
+   * "Accéder à mon salon" magic-link email (self-serve form flow). Ignored in
+   * enrich mode. See docs/product/32-self-serve-onboarding-implementation.md.
+   */
+  magicLinkSignIn?: boolean | null;
 };
 
 export type OnboardingHints = {
