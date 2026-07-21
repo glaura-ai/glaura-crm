@@ -14,6 +14,7 @@
  */
 
 import { chromium, type Browser, type Page } from "playwright";
+import { assertPublicHttpUrl } from "./url-guard";
 
 export type SourceType = "planity" | "treatwell" | "acuity" | "generic";
 
@@ -287,6 +288,10 @@ async function runExpansion(browser: Browser, url: string, sourceType: SourceTyp
  * expanded page HTML. Always closes the browser, even on error or timeout.
  */
 export async function expandSalonPage(url: string, opts: ExpandOptions = {}): Promise<ExpandResult> {
+  // SSRF guard: this fetches a public, user-supplied URL server-side. Reject
+  // non-http(s) and any host resolving to a private/reserved address before
+  // Chromium ever navigates.
+  await assertPublicHttpUrl(url);
   const sourceType = detectSource(url);
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const headless = opts.headless ?? true;
