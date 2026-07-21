@@ -662,6 +662,99 @@ function parseGeneric($: CheerioAPI): TrimmedSalonData {
 }
 
 // ---------------------------------------------------------------------------
+// Acuity (*.as.me / acuityscheduling.com)
+// ---------------------------------------------------------------------------
+
+// Acuity ships its whole catalogue as an inline `"appointmentTypes"` JSON blob
+// in the page HTML (plain-fetchable — read from the raw html, not the cheerio
+// tree, whose scripts are stripped by trimHtmlForExtraction). Services and
+// gallery images are deterministic; the salon NAME and HOURS are NOT on the
+// page (name comes from the CRM salon, hours live in an on-page image), so we
+// leave name empty (create-account falls back to the CRM hint) and hours blank.
+
+type AcuityAppointmentType = {
+  name?: string;
+  price?: string | number;
+  duration?: string | number;
+  description?: string;
+  active?: boolean;
+};
+
+/** Balanced-brace slice from `startBrace`, string-content aware. */
+function sliceBalancedObject(str: string, startBrace: number): string | null {
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let k = startBrace; k < str.length; k += 1) {
+    const c = str[k];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+    } else if (c === '"') inStr = true;
+    else if (c === "{") depth += 1;
+    else if (c === "}") {
+      depth -= 1;
+      if (depth === 0) return str.slice(startBrace, k + 1);
+    }
+  }
+  return null;
+}
+
+/** Parse the inline `"appointmentTypes"` JSON object from raw Acuity HTML. */
+function parseAcuityAppointmentTypes(html: string): Record<string, AcuityAppointmentType[]> {
+  const keyAt = html.indexOf('"appointmentTypes"');
+  if (keyAt < 0) return {};
+  const objStart = html.indexOf("{", keyAt);
+  const slice = objStart < 0 ? null : sliceBalancedObject(html, objStart);
+  return slice ? safeJsonParse<Record<string, AcuityAppointmentType[]>>(slice) ?? {} : {};
+}
+
+/** Acuity salon photos: CDN uploads embedded in the page (prefer JPEG over PNG). */
+function scrapeAcuityImages(html: string): string[] {
+  const unescaped = html.replace(/\\\//g, "/");
+  const urls = [
+    ...unescaped.matchAll(/https:\/\/cdn-s\.acuityscheduling\.com\/upload-[A-Za-z0-9]+\.(?:jpe?g|png)/gi),
+  ].map((m) => m[0]);
+  const deduped = [...new Set(urls)];
+  const jpegs = deduped.filter((u) => /\.jpe?g$/i.test(u));
+  return (jpegs.length > 0 ? jpegs : deduped).slice(0, MAX_IMAGES);
+}
+
+/** Deterministic Acuity trim: services + images from the inline JSON. */
+function parseAcuity(html: string): TrimmedSalonData {
+  const grouped = parseAcuityAppointmentTypes(html);
+  const services: TrimmedService[] = [];
+  for (const [subcategory, items] of Object.entries(grouped)) {
+    if (!Array.isArray(items)) continue;
+    for (const t of items) {
+      const svcName = typeof t.name === "string" ? t.name.trim() : "";
+      if (!svcName || t.active === false) continue;
+      const durationMin = Number(t.duration);
+      const priceNum = Number(t.price);
+      services.push({
+        name: svcName,
+        category: subcategory.trim(),
+        duration: Number.isFinite(durationMin) && durationMin > 0 ? `${durationMin}min` : "",
+        price: Number.isFinite(priceNum) && priceNum > 0 ? `${priceNum} €` : "",
+        description: typeof t.description === "string" ? t.description.trim() : "",
+      });
+    }
+  }
+  return {
+    name: "", // not on the page — create-account falls back to the CRM salon name
+    address: null,
+    phone: null,
+    bio: null,
+    images: scrapeAcuityImages(html),
+    hoursLines: [], // Acuity salons put hours in an on-page image, not the DOM
+    services,
+    staff: [],
+    reviews: [],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -683,7 +776,9 @@ export function trimHtmlForExtraction(html: string, sourceType: SourceType): str
       ? parsePlanity($)
       : sourceType === "treatwell"
         ? parseTreatwell($)
-        : parseGeneric($);
+        : sourceType === "acuity"
+          ? parseAcuity(html)
+          : parseGeneric($);
 
   return renderTrimmedText(data, sourceType);
 }

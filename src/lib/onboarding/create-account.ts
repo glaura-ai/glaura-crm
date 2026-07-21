@@ -441,7 +441,8 @@ export async function createDisabledSalonAccount(
     }
   }
 
-  const name = extract.salon.name?.trim();
+  // Acuity pages carry no salon name — fall back to the CRM salon name hint.
+  const name = extract.salon.name?.trim() || hints?.salonName?.trim();
   if (!name) {
     return failure({
       ownerId: null,
