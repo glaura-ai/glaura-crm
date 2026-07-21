@@ -451,13 +451,10 @@ const AGENT_NAME_POOL = ["Awa", "Fatou", "Naomi", "Sarah", "Léa", "Aïcha", "Ma
  * `timing`/`days`; the service link lives on the agent doc via
  * `subcategoryServices` / `categorySubcategories`.
  */
-export function buildAgentDocs(
-  count: number,
-  ownerId: string,
-  timing: Timing,
-  days: number[],
+/** Maps every service onto the two agent-doc coverage records (all services). */
+function buildServiceCoverage(
   services: readonly CreatedServiceRef[],
-): AgentDoc[] {
+): Pick<AgentDoc, "categorySubcategories" | "subcategoryServices"> {
   const subcategoryServices = services.reduce<Record<string, string[]>>((acc, svc) => {
     if (!svc.subcategory_id) return acc;
     return { ...acc, [svc.subcategory_id]: [...(acc[svc.subcategory_id] ?? []), svc.id] };
@@ -471,14 +468,51 @@ export function buildAgentDocs(
       : { ...acc, [svc.category_id]: [...existing, svc.subcategory_id] };
   }, {});
 
+  return { categorySubcategories, subcategoryServices };
+}
+
+/**
+ * Builds one agent per real practitioner name (from the source page's
+ * Collaborateurs), each assigned to ALL of the salon's services. Preferred over
+ * `buildAgentDocs` when the extractor found real staff. Names are trimmed and
+ * de-duplicated; empty input yields no agents.
+ */
+export function buildNamedAgentDocs(
+  names: readonly string[],
+  ownerId: string,
+  timing: Timing,
+  days: number[],
+  services: readonly CreatedServiceRef[],
+): AgentDoc[] {
+  const coverage = buildServiceCoverage(services);
+  const unique = Array.from(new Set(names.map((n) => n.trim()).filter((n) => n.length > 0)));
+  return unique.map((name) => ({
+    ownerId,
+    name,
+    applyToAllDays: false,
+    days,
+    timing,
+    ...coverage,
+    assignedProfession: "",
+  }));
+}
+
+export function buildAgentDocs(
+  count: number,
+  ownerId: string,
+  timing: Timing,
+  days: number[],
+  services: readonly CreatedServiceRef[],
+): AgentDoc[] {
+  const coverage = buildServiceCoverage(services);
+
   return Array.from({ length: Math.max(0, count) }, (_, i) => ({
     ownerId,
     name: AGENT_NAME_POOL[i % AGENT_NAME_POOL.length],
     applyToAllDays: false,
     days,
     timing,
-    categorySubcategories,
-    subcategoryServices,
+    ...coverage,
     assignedProfession: "",
   }));
 }

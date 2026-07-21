@@ -40,6 +40,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getAuth, getDb } from "@/lib/firebase-admin";
 import {
   buildAgentDocs,
+  buildNamedAgentDocs,
   buildReviewDocs,
   buildSearchNameList,
   buildServicesPayload,
@@ -596,12 +597,19 @@ export async function createDisabledSalonAccount(
     await applySubcategoryOrder(uid, orderBySubcategoryName, warnings);
   }
 
-  // Agents — synthesized (the page carries no real staff), each doing all services.
+  // Agents — real collaborateurs from the source page when the extractor found
+  // them, else synthesized to the P6 target. Each agent does all services.
   let agentCount = 0;
-  const agentTarget = overrides?.agentCount ?? 0;
-  if (agentTarget > 0 && created.length > 0) {
-    const agents = buildAgentDocs(agentTarget, uid, timing, days, created);
-    agentCount = await createAgents(agents, warnings);
+  if (created.length > 0) {
+    const staffNames = extract.staff ?? [];
+    const targetCount = overrides?.agentCount ?? 0;
+    const agents =
+      staffNames.length > 0
+        ? buildNamedAgentDocs(staffNames, uid, timing, days, created)
+        : targetCount > 0
+          ? buildAgentDocs(targetCount, uid, timing, days, created)
+          : [];
+    if (agents.length > 0) agentCount = await createAgents(agents, warnings);
   }
 
   // Reviews — real Planity reviews first (forced 5★), filled to the target.
