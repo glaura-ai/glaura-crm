@@ -36,6 +36,23 @@ export type OnboardingResult = {
  * the `OnboardingJob.config` JSON column so existing salons are unaffected.
  */
 export type OnboardingOverrides = {
+  /**
+   * Onboarding mode.
+   * - `"create"` (default when absent): provision a brand-new Firebase account
+   *   from scratch — the legacy/concierge path.
+   * - `"enrich"`: attach the extracted salon data (services, opening hours,
+   *   photos, agents, reviews) onto an EXISTING account identified by
+   *   `targetUid`. Used by the self-serve wizard, which creates the Firebase
+   *   account itself (with the salon's chosen credentials) and drops the salon
+   *   into the portal before this job runs — so the worker must never create a
+   *   second account. See docs/product/32-self-serve-onboarding-implementation.md §3b.
+   */
+  mode?: "create" | "enrich" | null;
+  /**
+   * Existing Firebase Auth uid to enrich when `mode === "enrich"`. Matching is
+   * by uid (not email) to avoid races with the account the portal just created.
+   */
+  targetUid?: string | null;
   /** Firebase Auth email to use instead of the generated `<slug>@glaura.fr`. */
   loginEmail?: string | null;
   /** Firebase Auth password to use instead of the random generated one. */

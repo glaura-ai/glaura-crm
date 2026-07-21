@@ -55,7 +55,7 @@ import {
 } from "./account-model";
 import type { SalonExtract } from "./extract";
 import { geocode } from "./geocode";
-import { hoursToTiming } from "./hours";
+import { hoursToTiming, type Timing } from "./hours";
 import { rehostSalonImages } from "./images";
 import { maybeSendWelcomeEmail } from "./welcome-email";
 import type { OnboardingHints, OnboardingOverrides, OnboardingResult } from "@/lib/onboarding";
@@ -384,11 +384,207 @@ function normalizeName(value: string): string {
 }
 
 /**
+ * Catalog enrichment shared by the create and enrich paths: uploads services,
+ * patches variants, applies subcategory page order, creates agents, and writes
+ * reviews onto an already-existing `userProfile/{uid}`. Every step is non-fatal
+ * — the base account is assumed to exist, so partial failures accumulate as
+ * warnings rather than aborting.
+ */
+async function applyCatalogEnrichment(
+  uid: string,
+  extract: SalonExtract,
+  overrides: OnboardingOverrides | undefined,
+  timing: Timing,
+  days: number[],
+  warnings: string[],
+): Promise<{ serviceCount: number; agentCount: number; reviewCount: number }> {
+  // Services.
+  const { payload, variantsByServiceName } = buildServicesPayload(extract, uid);
+  const serviceCount = await uploadServices(payload, warnings);
+  const created = serviceCount > 0 ? await readBackServices(uid) : [];
+
+  if (Object.keys(variantsByServiceName).length > 0) {
+    await patchServiceVariants(created, variantsByServiceName, warnings);
+  }
+
+  // Subcategory page order: subcategory_name → its 0-based order from the extract.
+  const orderBySubcategoryName = new Map<string, number>();
+  for (const svc of extract.services) {
+    if (svc.subcategory_order == null) continue;
+    const key = normalizeName(svc.subcategory_name);
+    if (!orderBySubcategoryName.has(key)) orderBySubcategoryName.set(key, svc.subcategory_order);
+  }
+  if (orderBySubcategoryName.size > 0) {
+    await applySubcategoryOrder(uid, orderBySubcategoryName, warnings);
+  }
+
+  // Agents — real collaborateurs from the source page when the extractor found
+  // them, else synthesized to the target. Each agent does all services.
+  let agentCount = 0;
+  if (created.length > 0) {
+    const staffNames = extract.staff ?? [];
+    const targetCount = overrides?.agentCount ?? 0;
+    const agents =
+      staffNames.length > 0
+        ? buildNamedAgentDocs(staffNames, uid, timing, days, created)
+        : targetCount > 0
+          ? buildAgentDocs(targetCount, uid, timing, days, created)
+          : [];
+    if (agents.length > 0) agentCount = await createAgents(agents, warnings);
+  }
+
+  // Reviews — real source reviews first (forced 5★), filled to the target.
+  let reviewCount = 0;
+  const reviewTarget = overrides?.reviewTarget ?? 0;
+  if (reviewTarget > 0) {
+    const reviewDocs = buildReviewDocs(extract.reviews ?? [], reviewTarget, new Date());
+    reviewCount = await writeReviews(uid, reviewDocs, warnings);
+  }
+
+  return { serviceCount, agentCount, reviewCount };
+}
+
+/**
+ * Self-serve ENRICH path (mode === "enrich"): the portal already created the
+ * Firebase Auth user and a minimal LIVE `userProfile/{targetUid}` (name, slug,
+ * address chosen by the salon). This attaches the scraped catalog onto that
+ * existing account — opening hours, gallery images, services, agents, reviews —
+ * WITHOUT touching the salon-chosen identity fields (companyName,
+ * companyUserName, address, spLocation) or ever creating a second account.
+ * See docs/product/32-self-serve-onboarding-implementation.md §3b.
+ */
+async function enrichExistingAccount(
+  uid: string,
+  extract: SalonExtract,
+  hints: OnboardingHints | undefined,
+  source: AccountSourceContext,
+  overrides: OnboardingOverrides,
+): Promise<CreateAccountResult> {
+  const warnings: string[] = [];
+
+  // The account the portal created must exist; bail loudly if it doesn't rather
+  // than silently falling through to create-mode (which would duplicate it).
+  const profileRef = getDb().collection("userProfile").doc(uid);
+  let existing: Awaited<ReturnType<typeof profileRef.get>>;
+  try {
+    existing = await profileRef.get();
+  } catch (error) {
+    return failure({
+      ownerId: uid,
+      email: null,
+      password: null,
+      address: null,
+      lat: null,
+      lng: null,
+      serviceCount: 0,
+      sourceType: source.sourceType,
+      url: source.url,
+      warnings,
+      error: `Enrich target lookup failed for uid ${uid}: ${error instanceof Error ? error.message : String(error)}`,
+    });
+  }
+  if (!existing.exists) {
+    return failure({
+      ownerId: uid,
+      email: null,
+      password: null,
+      address: null,
+      lat: null,
+      lng: null,
+      serviceCount: 0,
+      sourceType: source.sourceType,
+      url: source.url,
+      warnings,
+      error: `Enrich target userProfile/${uid} does not exist; portal must create the account before enqueuing.`,
+    });
+  }
+  const existingData = existing.data() as { email?: string; address?: string } | undefined;
+
+  // Opening hours from the scrape; images re-hosted into the EU media bucket.
+  const { timing, days } = hoursToTiming(extract.salon.hours);
+  const { profileImg, salonImages } = await rehostSalonImages(uid, extract.salon.images, Date.now(), warnings);
+
+  // Merge-patch only the enrichment fields. `merge: true` leaves the salon's
+  // own name/slug/address/spLocation intact; we never send those keys here.
+  // Bio, gallery and hours only overwrite when the scrape actually produced a
+  // value, so a re-run can't blank out fields the salon has since edited.
+  const patch: Record<string, unknown> = {
+    timing,
+    days,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  if (typeof extract.salon.bio === "string" && extract.salon.bio.trim()) {
+    patch.salonBio = extract.salon.bio.trim();
+  }
+  if (profileImg) patch.profileImg = profileImg;
+  if (salonImages.length > 0) patch.salon_images = salonImages;
+  if (overrides.deposit != null) {
+    patch.spdeposit = overrides.deposit;
+    patch.depositPercentage = overrides.deposit;
+  }
+  // CRM trace so this self-serve account is recognizable/idempotent later.
+  patch.crmSalonId = hints?.crmSalonId ?? null;
+  patch.crmOnboardingMode = "self_serve";
+  patch.crmSourceUrl = source.url;
+
+  try {
+    await profileRef.set(patch, { merge: true });
+  } catch (error) {
+    return failure({
+      ownerId: uid,
+      email: existingData?.email ?? null,
+      password: null,
+      address: existingData?.address ?? null,
+      lat: null,
+      lng: null,
+      serviceCount: 0,
+      sourceType: source.sourceType,
+      url: source.url,
+      warnings,
+      error: `Enrich profile patch failed for uid ${uid}: ${error instanceof Error ? error.message : String(error)}`,
+    });
+  }
+
+  const { serviceCount, agentCount, reviewCount } = await applyCatalogEnrichment(
+    uid,
+    extract,
+    overrides,
+    timing,
+    days,
+    warnings,
+  );
+
+  // No welcome email in enrich mode: the salon self-registered and is already
+  // in the portal, so there are no credentials to deliver.
+  return {
+    status: "success",
+    ownerId: uid,
+    email: existingData?.email ?? overrides.loginEmail ?? null,
+    password: null,
+    address: existingData?.address ?? null,
+    lat: null,
+    lng: null,
+    serviceCount,
+    agentCount,
+    reviewCount,
+    welcomeEmailSent: false,
+    sourceType: source.sourceType,
+    url: source.url,
+    warnings,
+    error: null,
+  };
+}
+
+/**
  * Creates a DISABLED Glaura salon account (Auth user + `userProfile` +
  * services) from a validated `SalonExtract`, or returns the existing
  * headless-staging profile if one was already created for this CRM salon.
- * NEVER enables the account. See onboard-headless.md §2/§3 for the invariants
- * this must uphold.
+ * NEVER enables the account (unless `overrides.enable`). See onboard-headless.md
+ * §2/§3 for the invariants this must uphold.
+ *
+ * When `overrides.mode === "enrich"` with a `targetUid`, this instead attaches
+ * the extracted catalog onto that existing (portal-created) account and never
+ * provisions a new one — the self-serve path.
  */
 export async function createDisabledSalonAccount(
   extract: SalonExtract,
@@ -396,6 +592,27 @@ export async function createDisabledSalonAccount(
   source: AccountSourceContext,
   overrides?: OnboardingOverrides,
 ): Promise<CreateAccountResult> {
+  // Self-serve enrich path — the portal already provisioned the account.
+  if (overrides?.mode === "enrich") {
+    const targetUid = overrides.targetUid?.trim();
+    if (!targetUid) {
+      return failure({
+        ownerId: null,
+        email: null,
+        password: null,
+        address: null,
+        lat: null,
+        lng: null,
+        serviceCount: 0,
+        sourceType: source.sourceType,
+        url: source.url,
+        warnings: [],
+        error: 'Enrich mode requires a targetUid, but none was provided.',
+      });
+    }
+    return enrichExistingAccount(targetUid, extract, hints, source, overrides);
+  }
+
   const warnings: string[] = [];
 
   // (a) Idempotency — never double-create for the same CRM salon.
@@ -575,51 +792,16 @@ export async function createDisabledSalonAccount(
     });
   }
 
-  // (g) Services — non-fatal on failure (see module doc comment).
-  const { payload, variantsByServiceName } = buildServicesPayload(extract, uid);
-  const serviceCount = await uploadServices(payload, warnings);
-
-  // (h) Enrichment (P6 full onboarding) — options, subcategory order, agents,
-  // reviews, deposit. All non-fatal; the base account already exists.
-  const created = serviceCount > 0 ? await readBackServices(uid) : [];
-
-  if (Object.keys(variantsByServiceName).length > 0) {
-    await patchServiceVariants(created, variantsByServiceName, warnings);
-  }
-
-  // Subcategory page order: subcategory_name → its 0-based order from the extract.
-  const orderBySubcategoryName = new Map<string, number>();
-  for (const svc of extract.services) {
-    if (svc.subcategory_order == null) continue;
-    const key = normalizeName(svc.subcategory_name);
-    if (!orderBySubcategoryName.has(key)) orderBySubcategoryName.set(key, svc.subcategory_order);
-  }
-  if (orderBySubcategoryName.size > 0) {
-    await applySubcategoryOrder(uid, orderBySubcategoryName, warnings);
-  }
-
-  // Agents — real collaborateurs from the source page when the extractor found
-  // them, else synthesized to the P6 target. Each agent does all services.
-  let agentCount = 0;
-  if (created.length > 0) {
-    const staffNames = extract.staff ?? [];
-    const targetCount = overrides?.agentCount ?? 0;
-    const agents =
-      staffNames.length > 0
-        ? buildNamedAgentDocs(staffNames, uid, timing, days, created)
-        : targetCount > 0
-          ? buildAgentDocs(targetCount, uid, timing, days, created)
-          : [];
-    if (agents.length > 0) agentCount = await createAgents(agents, warnings);
-  }
-
-  // Reviews — real Planity reviews first (forced 5★), filled to the target.
-  let reviewCount = 0;
-  const reviewTarget = overrides?.reviewTarget ?? 0;
-  if (reviewTarget > 0) {
-    const reviewDocs = buildReviewDocs(extract.reviews ?? [], reviewTarget, new Date());
-    reviewCount = await writeReviews(uid, reviewDocs, warnings);
-  }
+  // (g)/(h) Catalog enrichment — services, variants, subcategory order, agents,
+  // reviews. Shared verbatim with the enrich path. All non-fatal.
+  const { serviceCount, agentCount, reviewCount } = await applyCatalogEnrichment(
+    uid,
+    extract,
+    overrides,
+    timing,
+    days,
+    warnings,
+  );
 
   // (i) Onboarding welcome email — only for real (non-@glaura.fr) logins, so
   // the salon receives its credentials + next steps. Non-fatal: a send failure
