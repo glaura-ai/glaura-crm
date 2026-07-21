@@ -42,6 +42,7 @@ type Pipeline = {
   extractSalon: typeof import("../src/lib/onboarding/extract").extractSalon;
   createDisabledSalonAccount: typeof import("../src/lib/onboarding/create-account").createDisabledSalonAccount;
   encrypt: typeof import("../src/lib/crypto").encrypt;
+  onboardSalonReels: typeof import("../src/lib/onboarding/reels").onboardSalonReels;
 };
 
 // --- event helpers ---------------------------------------------------------
@@ -207,6 +208,55 @@ async function finalizeJob(
   }
 }
 
+/**
+ * Best-effort: seed the salon's top Instagram reels into its video feed after
+ * account creation. Gated by ONBOARDING_REELS_ENABLED (default off) so it stays
+ * dormant until validated on the VPS. Any miss or failure is emitted as an
+ * event and swallowed — reels must never fail an onboarding job.
+ */
+async function seedReelsForJob(
+  emit: Emit,
+  salon: SalonRow,
+  ownerId: string | null | undefined,
+  onboardSalonReels: Pipeline["onboardSalonReels"],
+) {
+  if (process.env.ONBOARDING_REELS_ENABLED !== "true") {
+    await emit("system", { type: "reels_skipped", text: "reels désactivés (ONBOARDING_REELS_ENABLED)" });
+    return;
+  }
+  if (!ownerId) {
+    await emit("system", { type: "reels_skipped", text: "pas d'ownerId (compte non créé)" });
+    return;
+  }
+  const handle = salon.instagram?.trim();
+  if (!handle) {
+    await emit("system", { type: "reels_skipped", text: "pas de handle Instagram" });
+    return;
+  }
+  if (!(process.env.IG_GRAPH_TOKEN && process.env.IG_GRAPH_USER_ID && process.env.ONBOARDING_SEED_SECRET)) {
+    await emit("stderr", {
+      type: "reels_skipped",
+      level: "warn",
+      text: "backend reels non configuré (IG_GRAPH_TOKEN / IG_GRAPH_USER_ID / ONBOARDING_SEED_SECRET)",
+    });
+    return;
+  }
+
+  try {
+    const lines: string[] = [];
+    const result = await onboardSalonReels({ handle, uid: ownerId, limit: 5 }, (m) => lines.push(m));
+    await emit("system", {
+      type: "reels_done",
+      text:
+        `reels @${result.handle}: ${result.resolved}/${result.candidates} résolus` +
+        (result.seed ? `, ${result.seed.synced} uploadé(s)` : ""),
+      data: { handle: result.handle, candidates: result.candidates, resolved: result.resolved, seed: result.seed, log: lines },
+    });
+  } catch (error) {
+    await emit("stderr", { type: "reels_error", level: "warn", text: error instanceof Error ? error.message : String(error) });
+  }
+}
+
 async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
   const job = await claimJob(prisma, id);
   if (!job || !job.salon) return;
@@ -266,6 +316,11 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
     });
 
     await finalizeJob(prisma, pipeline.encrypt, job.id, job.salonId, startedAt, result);
+
+    // Supplementary: seed the salon's Instagram reels into its video feed.
+    // Never affects job status — reels are best-effort and fail soft.
+    await seedReelsForJob(emit, job.salon, result.ownerId, pipeline.onboardSalonReels);
+
     await emit("system", { type: "job_exited", subtype: result.status, data: { exitCode: result.status === "failed" ? 1 : 0 } });
     console.log(`onboarded ${job.id} (${sourceUrl}): ${result.status}`);
   } catch (error) {
@@ -327,13 +382,15 @@ async function sleep(ms: number) {
 
 async function main() {
   const { prisma } = await import("../src/lib/db");
-  const [{ expandSalonPage }, { extractSalon }, { createDisabledSalonAccount }, { encrypt }] = await Promise.all([
-    import("../src/lib/onboarding/expand"),
-    import("../src/lib/onboarding/extract"),
-    import("../src/lib/onboarding/create-account"),
-    import("../src/lib/crypto"),
-  ]);
-  const pipeline: Pipeline = { expandSalonPage, extractSalon, createDisabledSalonAccount, encrypt };
+  const [{ expandSalonPage }, { extractSalon }, { createDisabledSalonAccount }, { encrypt }, { onboardSalonReels }] =
+    await Promise.all([
+      import("../src/lib/onboarding/expand"),
+      import("../src/lib/onboarding/extract"),
+      import("../src/lib/onboarding/create-account"),
+      import("../src/lib/crypto"),
+      import("../src/lib/onboarding/reels"),
+    ]);
+  const pipeline: Pipeline = { expandSalonPage, extractSalon, createDisabledSalonAccount, encrypt, onboardSalonReels };
 
   if (!loop) {
     await processBatch(prisma, pipeline);
