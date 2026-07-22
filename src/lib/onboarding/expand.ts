@@ -16,7 +16,7 @@
 import { chromium, type Browser, type Page } from "playwright";
 import { assertPublicHttpUrl } from "./url-guard";
 
-export type SourceType = "planity" | "treatwell" | "acuity" | "generic";
+export type SourceType = "planity" | "treatwell" | "acuity" | "booksy" | "fresha" | "generic";
 
 export type ExpandResult = {
   sourceType: SourceType;
@@ -56,6 +56,8 @@ export function detectSource(url: string): SourceType {
   if (host.includes("planity.com")) return "planity";
   if (host.includes("treatwell.")) return "treatwell";
   if (host.includes("acuityscheduling.com") || host.endsWith(".as.me")) return "acuity";
+  if (host.includes("booksy.com")) return "booksy";
+  if (host.includes("fresha.com")) return "fresha";
   return "generic";
 }
 
@@ -259,6 +261,14 @@ async function runExpansion(browser: Browser, url: string, sourceType: SourceTyp
     case "treatwell":
       await clickAllExpanders(page).catch(() => {});
       await expandTreatwellCategories(page).catch(() => {});
+      break;
+    case "booksy":
+    case "fresha":
+      // No DOM expansion needed: Booksy embeds its catalogue as schema.org
+      // JSON-LD (`makesOffer`) and Fresha ships it in the Next.js
+      // `__NEXT_DATA__` blob — both server-rendered into the initial HTML and
+      // captured verbatim by `document.documentElement.outerHTML` below. The
+      // parsers read those blobs directly (see parseBooksy / parseFresha).
       break;
     case "acuity":
     case "generic":

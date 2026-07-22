@@ -65,7 +65,7 @@ function detectBookingTool(url: string): { bookingTool: BookingTool; sourceType:
   if (host.includes("treatwell")) return { bookingTool: "TREATWELL", sourceType: "treatwell" };
   if (host.includes("booksy")) return { bookingTool: "BOOKSY", sourceType: "booksy" };
   if (host.includes("acuity") || host.includes("acuityscheduling")) return { bookingTool: "ACUITY", sourceType: "acuity" };
-  if (host.includes("fresha")) return { bookingTool: "FRESHA", sourceType: "generic" };
+  if (host.includes("fresha")) return { bookingTool: "FRESHA", sourceType: "fresha" };
   return { bookingTool: "SITE", sourceType: "generic" };
 }
 

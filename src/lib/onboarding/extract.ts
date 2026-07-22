@@ -755,6 +755,201 @@ function parseAcuity(html: string): TrimmedSalonData {
 }
 
 // ---------------------------------------------------------------------------
+// Booksy (booksy.com)
+// ---------------------------------------------------------------------------
+
+// Booksy renders its business as schema.org JSON-LD (a *Salon node with
+// `makesOffer`). The JSON-LD survives trimHtmlForExtraction (which keeps
+// application/ld+json), so we read it from the cheerio tree. Offers carry a
+// name + price but NO duration (durations live only in the Nuxt payload's
+// reference-encoded blob) — we leave duration blank and let Haiku/create-account
+// default it. Salon name, address, geo and photos come from the same node.
+
+type BooksyOffer = { name?: string; price?: number | string; priceCurrency?: string; image?: string };
+type BooksyBusiness = {
+  "@type"?: string | string[];
+  name?: string;
+  telephone?: string;
+  description?: string;
+  address?: unknown;
+  image?: string | string[];
+  makesOffer?: BooksyOffer[];
+  openingHoursSpecification?: unknown;
+};
+
+const BOOKSY_BUSINESS_TYPES = new Set([
+  "NailSalon", "HairSalon", "BeautySalon", "HealthAndBeautyBusiness", "DaySpa", "LocalBusiness",
+]);
+
+/** First JSON-LD node that looks like the salon business (has makesOffer or a salon @type). */
+function findBooksyBusiness($: CheerioAPI): BooksyBusiness | null {
+  let found: BooksyBusiness | null = null;
+  $('script[type="application/ld+json"]').each((_, el) => {
+    if (found) return;
+    const parsed = safeJsonParse<unknown>($(el).html());
+    const nodes = Array.isArray(parsed) ? parsed : [parsed];
+    for (const node of nodes) {
+      if (!node || typeof node !== "object") continue;
+      const n = node as BooksyBusiness;
+      const types = Array.isArray(n["@type"]) ? n["@type"] : n["@type"] ? [n["@type"]] : [];
+      if (Array.isArray(n.makesOffer) || types.some((t) => BOOKSY_BUSINESS_TYPES.has(t))) {
+        found = n;
+        return;
+      }
+    }
+  });
+  return found;
+}
+
+function booksyImages(image: string | string[] | undefined): string[] {
+  if (!image) return [];
+  const arr = Array.isArray(image) ? image : [image];
+  return arr.filter((u): u is string => typeof u === "string").slice(0, MAX_IMAGES);
+}
+
+function parseBooksy($: CheerioAPI): TrimmedSalonData {
+  const biz = findBooksyBusiness($);
+  const services: TrimmedService[] = [];
+  for (const offer of biz?.makesOffer ?? []) {
+    const name = typeof offer?.name === "string" ? offer.name.trim() : "";
+    if (!name) continue;
+    const priceNum = Number(offer.price);
+    services.push({
+      name,
+      category: "",
+      duration: "",
+      price: Number.isFinite(priceNum) && priceNum > 0 ? `${priceNum} €` : "",
+      description: "",
+    });
+  }
+  return {
+    name: (biz?.name ?? "").trim(),
+    address: formatPostalAddress(biz?.address) ?? addressFromBooksy(biz?.address),
+    phone: typeof biz?.telephone === "string" ? biz.telephone.trim() : findTelHref($),
+    bio: typeof biz?.description === "string" ? biz.description.trim() : null,
+    images: booksyImages(biz?.image),
+    hoursLines: [],
+    services,
+    staff: [],
+    reviews: [],
+  };
+}
+
+/** Booksy's streetAddress often already carries "street, postal, city" — use it whole. */
+function addressFromBooksy(address: unknown): string | null {
+  if (!address || typeof address !== "object") return null;
+  const street = (address as Record<string, unknown>).streetAddress;
+  return typeof street === "string" && street.trim() ? street.trim() : null;
+}
+
+// ---------------------------------------------------------------------------
+// Fresha (fresha.com)
+// ---------------------------------------------------------------------------
+
+// Fresha ships the whole venue (services grouped by category, address, working
+// hours, staff, gallery) in the Next.js `__NEXT_DATA__` JSON blob. That script
+// is stripped by trimHtmlForExtraction, so — like Acuity — we read it from the
+// raw HTML. The on-page menu is a preview subset of the full catalogue; we
+// capture everything present (a human reviewer completes the rest before the
+// account is flipped live).
+
+type FreshaItem = {
+  name?: string;
+  caption?: string; // e.g. "10 min"
+  maxInSeconds?: number;
+  retailPrice?: { value?: number; currency?: string };
+  description?: string;
+};
+type FreshaCategory = { name?: string; items?: FreshaItem[] };
+type FreshaLocation = {
+  name?: string;
+  contactNumber?: string;
+  description?: string;
+  address?: { shortFormatted?: string };
+  workingTime?: { days?: Array<{ dayName?: string; isClosed?: boolean; values?: Array<{ value?: string }> }> };
+  services?: FreshaCategory[];
+  employeeProfiles?: Array<{ name?: string } | string>;
+  galleryDesktopLargeImages?: Array<{ url?: string } | string>;
+  galleryModalDesktopLargeImages?: Array<{ url?: string } | string>;
+};
+
+function parseFreshaLocation(html: string): FreshaLocation | null {
+  const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
+  if (!m) return null;
+  const data = safeJsonParse<{ props?: { pageProps?: { data?: { location?: FreshaLocation } } } }>(m[1]);
+  return data?.props?.pageProps?.data?.location ?? null;
+}
+
+function freshaDuration(item: FreshaItem): string {
+  if (typeof item.caption === "string" && item.caption.trim()) return item.caption.trim();
+  const secs = Number(item.maxInSeconds);
+  return Number.isFinite(secs) && secs > 0 ? `${Math.round(secs / 60)}min` : "";
+}
+
+/** Fresha's JSON blob is not always well-typed: fields we expect as arrays can
+ *  arrive as objects/null. Coerce defensively before iterating. */
+function asArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function freshaImages(loc: FreshaLocation): string[] {
+  const gallery = asArray<{ url?: string } | string>(
+    loc.galleryDesktopLargeImages ?? loc.galleryModalDesktopLargeImages,
+  );
+  const urls = gallery
+    .map((g) => (typeof g === "string" ? g : g?.url))
+    .filter((u): u is string => typeof u === "string" && u.length > 0);
+  return [...new Set(urls)].slice(0, MAX_IMAGES);
+}
+
+function parseFresha(html: string): TrimmedSalonData {
+  const loc = parseFreshaLocation(html);
+  if (!loc) return parseGeneric(cheerio.load(html));
+
+  const services: TrimmedService[] = [];
+  for (const category of asArray<FreshaCategory>(loc.services)) {
+    const categoryName = (category.name ?? "").trim();
+    for (const item of asArray<FreshaItem>(category.items)) {
+      const name = typeof item.name === "string" ? item.name.trim() : "";
+      if (!name) continue;
+      const priceNum = Number(item.retailPrice?.value);
+      services.push({
+        name,
+        category: categoryName,
+        duration: freshaDuration(item),
+        price: Number.isFinite(priceNum) && priceNum > 0 ? `${priceNum} €` : "",
+        description: typeof item.description === "string" ? item.description.trim() : "",
+      });
+    }
+  }
+
+  const hoursLines = asArray<{ dayName?: string; isClosed?: boolean; values?: Array<{ value?: string }> }>(
+    loc.workingTime?.days,
+  ).map((d) => {
+    const day = (d.dayName ?? "").trim();
+    if (d.isClosed) return `${day}: Fermé`;
+    const times = asArray<{ value?: string }>(d.values).map((v) => v?.value).filter(Boolean).join(", ");
+    return `${day}: ${times}`;
+  });
+
+  const staff = asArray<{ name?: string } | string>(loc.employeeProfiles)
+    .map((e) => (typeof e === "string" ? e : e?.name))
+    .filter((n): n is string => typeof n === "string" && n.trim().length > 0);
+
+  return {
+    name: (loc.name ?? "").trim(),
+    address: loc.address?.shortFormatted?.trim() || null,
+    phone: typeof loc.contactNumber === "string" ? loc.contactNumber.trim() : null,
+    bio: typeof loc.description === "string" ? loc.description.trim() : null,
+    images: freshaImages(loc),
+    hoursLines,
+    services,
+    staff,
+    reviews: [],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -778,7 +973,11 @@ export function trimHtmlForExtraction(html: string, sourceType: SourceType): str
         ? parseTreatwell($)
         : sourceType === "acuity"
           ? parseAcuity(html)
-          : parseGeneric($);
+          : sourceType === "booksy"
+            ? parseBooksy($)
+            : sourceType === "fresha"
+              ? parseFresha(html)
+              : parseGeneric($);
 
   return renderTrimmedText(data, sourceType);
 }
@@ -788,7 +987,7 @@ const MAX_OUTPUT_TOKENS = 16000;
 
 const SYSTEM_PROMPT = `You are a precise data-extraction engine for a beauty-salon booking-page onboarding pipeline.
 
-You will be given a compact, mechanically-trimmed text summary of a salon's booking page (Planity or Treatwell). Extract EXACTLY what is present in the text — never invent, guess, or embellish data.
+You will be given a compact, mechanically-trimmed text summary of a salon's booking page (Planity, Treatwell, Booksy, Fresha or Acuity). Extract EXACTLY what is present in the text — never invent, guess, or embellish data.
 
 Rules:
 - NEVER translate service names or descriptions. Keep the exact original French text verbatim, including spacing, punctuation and accents.
