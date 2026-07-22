@@ -983,7 +983,10 @@ export function trimHtmlForExtraction(html: string, sourceType: SourceType): str
 }
 
 const EXTRACTION_MODEL = "claude-haiku-4-5";
-const MAX_OUTPUT_TOKENS = 16000;
+// Large menus (e.g. a 320-service Planity salon) overflow a 16K cap and the
+// structured-output JSON gets truncated mid-string. Haiku 4.5 allows up to 64K
+// output tokens; 32K comfortably covers ~500 services with margin.
+const MAX_OUTPUT_TOKENS = 32000;
 
 const SYSTEM_PROMPT = `You are a precise data-extraction engine for a beauty-salon booking-page onboarding pipeline.
 
@@ -1019,7 +1022,11 @@ export async function extractSalon(
   hints?: ExtractSalonHints,
 ): Promise<SalonExtract> {
   const trimmed = trimHtmlForExtraction(html, sourceType);
-  const client = new Anthropic();
+  // An explicit client timeout is required: without it the SDK refuses any
+  // non-streaming request whose max_tokens implies a >10min worst case
+  // ((3600*max_tokens)/128000 > 600s, i.e. max_tokens > ~21K). Haiku actually
+  // returns 32K tokens in ~1-2min, so a 10min ceiling is ample headroom.
+  const client = new Anthropic({ timeout: 600_000 });
 
   const promptLines = [
     `Source: ${sourceType}`,

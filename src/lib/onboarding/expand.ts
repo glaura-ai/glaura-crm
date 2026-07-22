@@ -32,7 +32,10 @@ export type ExpandOptions = {
   headless?: boolean;
 };
 
-const DEFAULT_TIMEOUT_MS = 60_000;
+// Very large salon pages (hundreds of services with many "voir plus" expanders)
+// can take ~2min to fully expand — a 60s budget times them out. 180s leaves room
+// for the slowest real pages while still bounding a genuinely hung navigation.
+const DEFAULT_TIMEOUT_MS = 180_000;
 const NAV_TIMEOUT_MS = 30_000;
 const ACTION_TIMEOUT_MS = 15_000;
 const CLICK_TIMEOUT_MS = 3_000;
