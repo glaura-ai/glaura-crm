@@ -118,6 +118,37 @@ function failure(
   return { status: "failed", agentCount: 0, reviewCount: 0, welcomeEmailSent: false, ...partial };
 }
 
+/** Detects the Firebase Auth "email already registered" condition from a thrown error. */
+function isEmailCollisionError(error: unknown): boolean {
+  if ((error as { code?: string } | undefined)?.code === "auth/email-already-exists") return true;
+  const msg = error instanceof Error ? error.message.toLowerCase() : "";
+  return msg.includes("already in use") || msg.includes("already exists");
+}
+
+/**
+ * Clear, support-actionable failure reason for a create-mode email collision.
+ * The `DUPLICATE_EMAIL:` prefix lets the CRM categorize the failed job and route
+ * the salon to sign in, rather than treating it as a generic onboarding error.
+ */
+export function duplicateEmailReason(email: string): string {
+  return `DUPLICATE_EMAIL: ${email} already has a Glaura account — the salon should sign in at pro.glaura.ai instead of onboarding again.`;
+}
+
+/**
+ * True when a Firebase Auth user already exists for `email`. Used to fast-fail a
+ * create-mode collision BEFORE the expensive scrape/extract. Re-throws unknown
+ * lookup errors so a transient failure is never mistaken for "available".
+ */
+export async function emailAlreadyRegistered(email: string): Promise<boolean> {
+  try {
+    await getAuth().getUserByEmail(email);
+    return true;
+  } catch (error) {
+    if ((error as { code?: string } | undefined)?.code === "auth/user-not-found") return false;
+    throw error;
+  }
+}
+
 /**
  * Checks whether a headless-onboarded (disabled) staging profile already
  * exists for this CRM salon, per onboard-headless.md §3. Never throws — a
@@ -735,7 +766,11 @@ export async function createDisabledSalonAccount(
       sourceType: source.sourceType,
       url: source.url,
       warnings,
-      error: `Auth user creation failed: ${error instanceof Error ? error.message : String(error)}`,
+      // A duplicate login email is the common, actionable failure: give it a
+      // clear reason support can route on instead of a raw Firebase message.
+      error: isEmailCollisionError(error)
+        ? duplicateEmailReason(email)
+        : `Auth user creation failed: ${error instanceof Error ? error.message : String(error)}`,
     });
   }
 
