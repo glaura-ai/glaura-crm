@@ -41,6 +41,8 @@ type Pipeline = {
   expandSalonPage: typeof import("../src/lib/onboarding/expand").expandSalonPage;
   extractSalon: typeof import("../src/lib/onboarding/extract").extractSalon;
   createDisabledSalonAccount: typeof import("../src/lib/onboarding/create-account").createDisabledSalonAccount;
+  emailAlreadyRegistered: typeof import("../src/lib/onboarding/create-account").emailAlreadyRegistered;
+  duplicateEmailReason: typeof import("../src/lib/onboarding/create-account").duplicateEmailReason;
   encrypt: typeof import("../src/lib/crypto").encrypt;
   onboardSalonReels: typeof import("../src/lib/onboarding/reels").onboardSalonReels;
 };
@@ -267,6 +269,39 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
   await emit("system", { type: "job_started", text: `onboarding ${sourceUrl}`, data: { sourceUrl, sourceType: job.sourceType } });
 
   try {
+    // Per-job `config` (JSON column) carries P6 overrides — login creds, enable
+    // flag, mode, deposit, agent/review targets. Absent → legacy disabled behavior.
+    const overrides = (job.config ?? undefined) as OnboardingOverrides | undefined;
+
+    // 0. Fast-fail create-mode email collisions BEFORE the expensive scrape/LLM.
+    // Enrich mode reuses an existing account, so it never collides here.
+    const createLogin = overrides?.mode === "enrich" ? null : overrides?.loginEmail?.trim();
+    if (createLogin && (await pipeline.emailAlreadyRegistered(createLogin))) {
+      const reason = pipeline.duplicateEmailReason(createLogin);
+      const finishedAt = new Date();
+      await emit("system", {
+        type: "account_created",
+        subtype: "failed",
+        level: "error",
+        text: reason,
+        data: { status: "failed", reason: "duplicate_email", email: createLogin },
+      });
+      await prisma.onboardingJob.update({
+        where: { id: job.id },
+        data: {
+          status: "FAILED",
+          finishedAt,
+          durationMs: finishedAt.getTime() - startedAt.getTime(),
+          exitCode: 1,
+          loginEmail: createLogin,
+          error: reason,
+        },
+      });
+      await emit("system", { type: "job_exited", subtype: "failed", data: { exitCode: 1, reason: "duplicate_email" } });
+      console.log(`onboarded ${job.id} (${sourceUrl}): failed (duplicate_email, no scrape)`);
+      return;
+    }
+
     // 1. Expand — deterministic Playwright reveal of all hidden services.
     const expanded = await pipeline.expandSalonPage(sourceUrl);
     await emit("system", {
@@ -290,9 +325,6 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
     });
 
     // 3. Create the salon account (Auth + userProfile + services + enrichment).
-    // Per-job `config` (JSON column) carries P6 overrides — login creds, enable
-    // flag, deposit, agent/review targets. Absent → legacy disabled behavior.
-    const overrides = (job.config ?? undefined) as OnboardingOverrides | undefined;
     const result = await pipeline.createDisabledSalonAccount(extract, buildHints(job.salon), {
       url: sourceUrl,
       sourceType: expanded.sourceType,
@@ -382,7 +414,7 @@ async function sleep(ms: number) {
 
 async function main() {
   const { prisma } = await import("../src/lib/db");
-  const [{ expandSalonPage }, { extractSalon }, { createDisabledSalonAccount }, { encrypt }, { onboardSalonReels }] =
+  const [{ expandSalonPage }, { extractSalon }, createAccountMod, { encrypt }, { onboardSalonReels }] =
     await Promise.all([
       import("../src/lib/onboarding/expand"),
       import("../src/lib/onboarding/extract"),
@@ -390,7 +422,15 @@ async function main() {
       import("../src/lib/crypto"),
       import("../src/lib/onboarding/reels"),
     ]);
-  const pipeline: Pipeline = { expandSalonPage, extractSalon, createDisabledSalonAccount, encrypt, onboardSalonReels };
+  const pipeline: Pipeline = {
+    expandSalonPage,
+    extractSalon,
+    createDisabledSalonAccount: createAccountMod.createDisabledSalonAccount,
+    emailAlreadyRegistered: createAccountMod.emailAlreadyRegistered,
+    duplicateEmailReason: createAccountMod.duplicateEmailReason,
+    encrypt,
+    onboardSalonReels,
+  };
 
   if (!loop) {
     await processBatch(prisma, pipeline);
