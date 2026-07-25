@@ -55,10 +55,16 @@ export async function generateTournee(fd: FormData) {
     const existing = await prisma.tournee.findUnique({ where: { date_zone: { date: today, zone: d.zone } } });
     if (existing) throw new Error("Une tournée existe déjà aujourd'hui pour cette zone.");
 
-    // Best tiers first, then most reviewed within a tier.
+    // Instagram tier first, then salons findable on Google (a real, established
+    // business), then most reviewed. Prospects without a Google profile are
+    // ranked lower but never excluded — nulls last, not filtered out.
     const picked = await prisma.prospect.findMany({
       where: { zone: d.zone, status: "NOUVEAU", tier: { gte: d.minTier } },
-      orderBy: [{ tier: "desc" }, { reviewCount: "desc" }],
+      orderBy: [
+        { tier: "desc" },
+        { googlePlaceId: { sort: "desc", nulls: "last" } },
+        { reviewCount: "desc" },
+      ],
       take: d.size,
       select: { id: true },
     });

@@ -89,6 +89,13 @@ enum ProspectStatus {
 }
 
 // Instagram enrichment lifecycle (cross-validated against the salon).
+enum GoogleStatus {
+  A_FAIRE // not looked up yet
+  TROUVE // a Google Business Profile matched this salon
+  INTROUVABLE // searched, no plausible profile
+  ERREUR // lookup failed for this prospect (retryable)
+}
+
 enum IgStatus {
   A_FAIRE // not enriched yet
   CONFIRME // account auto-confirmed by strong signals (booking link, name+location)
@@ -236,9 +243,18 @@ model Prospect {
   igStatus           IgStatus  @default(A_FAIRE)
   igCheckedAt        DateTime?
 
-  googleRating      Float? // Google Business Profile (deferred — filled later)
+  // Google Business Profile. Presence is a ranking signal (a findable business),
+  // never a filter. googleRating/googleReviewCount stay NULL on purpose: those
+  // fields would move every Places lookup to the Enterprise SKU — see the cost
+  // note in lib/prospection/google-places.ts.
+  googleRating      Float?
   googleReviewCount Int?
-  tier              Int    @default(1) // 1=Base … 4=Référence (see lib/prospection/tier.ts)
+  googlePlaceId     String?
+  googleName        String? // what Google matched, so a wrong match is auditable
+  googleStatus      GoogleStatus @default(A_FAIRE)
+  googleCheckedAt   DateTime?
+
+  tier Int @default(1) // 1=IG inconnu … 4=IG fort (see lib/prospection/tier.ts)
 
   status         ProspectStatus @default(NOUVEAU)
   matchedSalonId String? // existing CRM salon this prospect was matched to (DEJA_CRM)
@@ -259,6 +275,7 @@ model Prospect {
   @@index([status])
   @@index([tourneeId])
   @@index([igStatus])
+  @@index([googleStatus])
 }
 
 // A daily prospecting round: 20-30 prospects in one zone, assigned to a commercial.

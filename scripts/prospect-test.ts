@@ -15,6 +15,7 @@ import { treatwellMaxPage, treatwellPageUrl, treatwellTargets } from "../src/lib
 import { candidateUsernames, decide, looksRelated, scoreCandidate } from "../src/lib/prospection/ig-match";
 import { combinedReviews, computeTier, tierForProspect } from "../src/lib/prospection/tier";
 import { cookieHeaderFromNetscape } from "../src/lib/prospection/instagram";
+import { buildQuery, isPlausibleMatch } from "../src/lib/prospection/google-places";
 import { matchCrmSalon, normalizeBookingUrl, normalizeName, postalFromArrondissement } from "../src/lib/prospection/match";
 import { ZONE_BY_SLUG, ZONES, zoneForPostalCode } from "../src/lib/prospection/zones";
 
@@ -306,6 +307,34 @@ ok("reviews no longer influence the tier", () => {
 ok("combinedReviews adds Google when present (tournée tiebreaker)", () => {
   assert.equal(combinedReviews(60, null), 60);
   assert.equal(combinedReviews(60, 50), 110);
+});
+
+// --- google business profile -----------------------------------------------
+
+ok("isPlausibleMatch accepts the same salon named slightly differently", () => {
+  assert.equal(isPlausibleMatch("Studio Kiyomi", "Studio Kiyomi Paris"), true);
+  assert.equal(isPlausibleMatch("L'Atelier d'Aurélie", "Latelier d Aurelie"), true); // accents/punctuation
+  assert.equal(isPlausibleMatch("Bâton Rouge Paris", "Baton Rouge"), true);
+});
+
+ok("isPlausibleMatch rejects a different business at the same address", () => {
+  // Google returns *something* for almost any query, so this guard is what stops
+  // a neighbouring business being recorded as the salon's profile.
+  assert.equal(isPlausibleMatch("Maison Irisée", "Urban Thaï Spa Wellness"), false);
+  assert.equal(isPlausibleMatch("Brow By Christina", "Chez Christophe"), false);
+  assert.equal(isPlausibleMatch("Salon X", ""), false);
+});
+
+ok("isPlausibleMatch does not let very short names match by coincidence", () => {
+  // "nails" must not match "Nails Factory Bastille" on containment alone.
+  assert.equal(isPlausibleMatch("Ongl", "Onglerie du Marais"), false);
+  assert.equal(isPlausibleMatch("Ongl", "Ongl"), true);
+});
+
+ok("buildQuery skips missing address parts", () => {
+  assert.equal(buildQuery("Salon X", "12 rue Oberkampf", "75011 Paris"), "Salon X, 12 rue Oberkampf, 75011 Paris");
+  assert.equal(buildQuery("Salon X", null, "75011 Paris"), "Salon X, 75011 Paris");
+  assert.equal(buildQuery("Salon X", null, null), "Salon X");
 });
 
 console.log(`\n${passed} tests OK`);
