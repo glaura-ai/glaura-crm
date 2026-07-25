@@ -133,11 +133,7 @@ export async function validateInstagram(fd: FormData) {
         instagramFollowers: chosen.followers ?? null,
         igStatus: "CONFIRME",
         igCheckedAt: new Date(),
-        tier: tierForProspect({
-          reviewCount: prospect.reviewCount,
-          googleReviewCount: prospect.googleReviewCount,
-          instagramFollowers: chosen.followers ?? null,
-        }),
+        tier: tierForProspect({ instagramFollowers: chosen.followers ?? null }),
       },
     });
   });
