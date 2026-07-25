@@ -79,6 +79,20 @@ export function isPlausibleMatch(prospectName: string, placeName: string): boole
   return shorter.length / longer.length >= MIN_NAME_OVERLAP;
 }
 
+// Google puts the actionable part in error.details[].reason (e.g.
+// API_KEY_IP_ADDRESS_BLOCKED); the message then names the offending IP.
+async function describeError(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as {
+      error?: { status?: string; message?: string; details?: Array<{ reason?: string }> };
+    };
+    const reason = body.error?.details?.map((d) => d.reason).filter(Boolean).join(", ");
+    return [reason, body.error?.status, body.error?.message].filter(Boolean).join(" | ") || response.statusText;
+  } catch {
+    return response.statusText;
+  }
+}
+
 export function buildQuery(name: string, address: string | null, city: string | null): string {
   return [name, address, city].filter(Boolean).join(", ");
 }
@@ -113,14 +127,18 @@ export async function findPlace(
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
 
-  if (response.status === 401 || response.status === 403) {
-    throw new PlacesAuthError(`Places API refuse la clé (HTTP ${response.status}). Vérifie GOOGLE_PLACES_KEY et ses restrictions.`);
-  }
-  if (response.status === 429) {
-    throw new PlacesQuotaError("Places API: quota dépassé (HTTP 429).");
-  }
-  if (!response.ok) {
-    throw new Error(`Places API HTTP ${response.status}`);
+  if (response.status === 401 || response.status === 403 || response.status === 429 || !response.ok) {
+    // Surface Google's own reason: "key refused" alone sends you hunting the
+    // wrong thing, when the cause is usually a specific, fixable restriction
+    // (API_KEY_IP_ADDRESS_BLOCKED, API_KEY_SERVICE_BLOCKED, billing disabled…).
+    const detail = await describeError(response);
+    if (response.status === 401 || response.status === 403) {
+      throw new PlacesAuthError(`Places API (HTTP ${response.status}) — ${detail}`);
+    }
+    if (response.status === 429) {
+      throw new PlacesQuotaError(`Places API quota (HTTP 429) — ${detail}`);
+    }
+    throw new Error(`Places API HTTP ${response.status} — ${detail}`);
   }
 
   const data = (await response.json()) as SearchTextResponse;
