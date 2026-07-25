@@ -1,4 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
+import { SubmitButton } from "@/components/SubmitButton";
 import { METIER_ORDER, METIER_LABEL, STATUS_ORDER, STATUS_LABEL, BOOKING_LABEL } from "@/lib/labels";
 import type { SalonDetail } from "@/lib/salons";
 
@@ -46,6 +48,11 @@ export function SalonForm({
 }) {
   return (
     <form action={action} className="space-y-4">
+      {/* One rendered create form may only ever produce one salon, however many
+          times it is submitted — createSalon keys on this. Reloading the page
+          mints a new token, which is the case where a second salon IS wanted. */}
+      {!salon && <input type="hidden" name="formToken" value={randomUUID()} />}
+
       {isAdmin && assignableUsers.length > 0 && (
         <div>
           <label className={labelCls}>Assigné à</label>
@@ -154,9 +161,12 @@ export function SalonForm({
       </div>
 
       <div className="flex justify-end gap-2 pt-2">
-        <button type="submit" className="rounded-lg bg-rose-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-rose-600">
+        <SubmitButton
+          pendingLabel={salon ? "Enregistrement…" : "Création…"}
+          className="rounded-lg bg-rose-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-rose-600"
+        >
           {salon ? "Enregistrer" : "Créer le salon"}
-        </button>
+        </SubmitButton>
       </div>
     </form>
   );

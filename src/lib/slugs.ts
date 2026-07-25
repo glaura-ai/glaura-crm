@@ -9,13 +9,16 @@ export function slugify(s: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+// Bounded so a pathological name can never spin forever. 500 matches the
+// self-serve onboarding reservation limit.
+const MAX_SLUG_ATTEMPTS = 500;
+
 export async function uniqueSalonSlug(name: string, excludeId?: string): Promise<string> {
   const base = slugify(name) || "salon";
-  let slug = base;
-  let i = 1;
-  while (true) {
+  for (let i = 0; i <= MAX_SLUG_ATTEMPTS; i++) {
+    const slug = i === 0 ? base : `${base}-${i}`;
     const existing = await prisma.salon.findUnique({ where: { slug } });
     if (!existing || existing.id === excludeId) return slug;
-    slug = `${base}-${i++}`;
   }
+  throw new Error(`Impossible de générer un slug unique pour « ${name} » après ${MAX_SLUG_ATTEMPTS} tentatives.`);
 }

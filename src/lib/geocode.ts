@@ -4,10 +4,18 @@ export type GeocodedAddress = {
   lng: number;
 };
 
+// Geocoding runs inline while an operator waits on a form submit, so a slow or
+// unresponsive BAN must not hold the request open indefinitely — a silently
+// pending form is what provokes repeat clicks. Give up and save without
+// coordinates instead; the address itself is still kept.
+const GEOCODE_TIMEOUT_MS = 5_000;
+
 // Geocode a French address via the BAN (api-adresse.data.gouv.fr). Null on miss.
 export async function geocodeAddress(address: string): Promise<GeocodedAddress | null> {
   try {
-    const response = await fetch(`https://api-adresse.data.gouv.fr/search/?limit=1&q=${encodeURIComponent(address)}`);
+    const response = await fetch(`https://api-adresse.data.gouv.fr/search/?limit=1&q=${encodeURIComponent(address)}`, {
+      signal: AbortSignal.timeout(GEOCODE_TIMEOUT_MS),
+    });
     if (!response.ok) return null;
 
     const data = (await response.json()) as {

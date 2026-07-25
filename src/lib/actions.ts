@@ -133,12 +133,49 @@ function cleanInstagram(value: string): string | null {
     .replace(/^@/, "") || null;
 }
 
+// Prisma throws P2002 when a unique index rejects a write; `target` names the
+// column(s) that collided.
+function isUniqueViolationOn(error: unknown, column: string): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const e = error as { code?: string; meta?: { target?: unknown } };
+  if (e.code !== "P2002") return false;
+  const target = e.meta?.target;
+  return Array.isArray(target) ? target.includes(column) : target === column;
+}
+
 export async function createSalon(fd: FormData) {
   const me = await requireCurrentUser();
+
+  // Double-submit guard. The form ships a token minted once per render, so every
+  // click on the same form resolves to the same salon instead of another row.
+  // The disabled button in SubmitButton stops the common case, but only this
+  // unique key stops genuinely concurrent POSTs — which is what produced 32
+  // copies of one salon in 74 seconds on 2026-06-15.
+  const token = optionalString(fd.get("formToken"));
+  const externalRef = token ? `manual:${token}` : null;
+
+  if (externalRef) {
+    const existing = await prisma.salon.findUnique({ where: { externalRef }, select: { id: true } });
+    if (existing) redirect(`/salons/${existing.id}`);
+  }
+
   const d = await parse(fd);
-  const salon = await prisma.salon.create({
-    data: { ...d, slug: await uniqueSlug(d.name), source: "MANUAL", assignedToId: me.id },
-  });
+
+  let salon;
+  try {
+    salon = await prisma.salon.create({
+      data: { ...d, slug: await uniqueSlug(d.name), source: "MANUAL", assignedToId: me.id, externalRef },
+    });
+  } catch (error) {
+    // Lost a race against a concurrent submit of the same form: the winner
+    // already created the salon, so land on it rather than showing an error.
+    if (externalRef && isUniqueViolationOn(error, "externalRef")) {
+      const winner = await prisma.salon.findUnique({ where: { externalRef }, select: { id: true } });
+      if (winner) redirect(`/salons/${winner.id}`);
+    }
+    throw error;
+  }
+
   revalidatePath("/salons");
   redirect(`/salons/${salon.id}`);
 }
