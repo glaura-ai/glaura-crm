@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { activeDailyPriorityDateFilter } from "@/lib/dailyPriority";
+import { phoneSearchTerm } from "@/lib/phone";
 import type { LeadSource, Metier, SalonStatus, SalonType } from "@/generated/prisma/enums";
 
 export type ViewerScope = {
@@ -23,9 +24,29 @@ function scopedOwnerId(f: SalonFilters, viewer?: ViewerScope): string | undefine
   return viewer.role === "ADMIN" ? f.owner : viewer.id;
 }
 
+// Stored phone numbers are unnormalized, so an ILIKE on the raw column misses
+// most of them. Both sides are reduced to the French national form and compared
+// as a substring, which lets a partial number — the last six digits, say —
+// still find its salon.
+//
+// salon_phone_canonical() is the database-side twin of canonicalizePhone(); it
+// is defined, and indexed, in the 20260725120000_salon_search_trgm_indexes
+// migration. Calling the shared function (rather than inlining the CASE here)
+// is what lets the planner use that expression index.
+async function salonIdsMatchingPhone(term: string): Promise<string[]> {
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "Salon"
+    WHERE phone IS NOT NULL
+      AND salon_phone_canonical(phone) LIKE ${`%${term}%`}
+  `;
+  return rows.map((r) => r.id);
+}
+
 export async function getSalons(f: SalonFilters, viewer?: ViewerScope) {
   const q = f.q?.trim();
   const ownerId = scopedOwnerId(f, viewer);
+  const phoneTerm = q ? phoneSearchTerm(q) : null;
+  const phoneMatchIds = phoneTerm ? await salonIdsMatchingPhone(phoneTerm) : [];
   return prisma.salon.findMany({
     where: {
       ...(f.status ? { status: f.status as SalonStatus } : {}),
@@ -44,6 +65,7 @@ export async function getSalons(f: SalonFilters, viewer?: ViewerScope) {
               { instagram: { contains: q, mode: "insensitive" as const } },
               { address: { contains: q, mode: "insensitive" as const } },
               { notes: { contains: q, mode: "insensitive" as const } },
+              ...(phoneMatchIds.length ? [{ id: { in: phoneMatchIds } }] : []),
             ],
           }
         : {}),
