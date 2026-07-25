@@ -19,6 +19,7 @@
     "onboard:reels": "tsx scripts/onboard-reels.ts",
     "prospect:sweep": "tsx scripts/prospect-sweep.ts",
     "prospect:ig": "tsx scripts/prospect-enrich-ig.ts",
+    "prospect:google": "tsx scripts/prospect-enrich-google.ts",
     "prospect:test": "tsx scripts/prospect-test.ts"
   },
   "dependencies": {
