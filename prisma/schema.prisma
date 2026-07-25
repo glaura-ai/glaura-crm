@@ -184,6 +184,15 @@ model Salon {
   clientBaseImported  Boolean   @default(false)
   importedClientCount Int?
 
+  // Duplicate handling. Salons are never deleted: a duplicate is archived and
+  // points at the record it was merged into, so the merge can be undone and the
+  // original data stays auditable. Archived salons are hidden from the pipeline.
+  archivedAt   DateTime?
+  archiveNote  String?
+  mergedIntoId String?
+  mergedInto   Salon?    @relation("SalonMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedFrom   Salon[]   @relation("SalonMerge")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -200,6 +209,7 @@ model Salon {
   @@index([assignedToId, priorityDate])
   @@index([nextActionAt])
   @@index([airtableBaseId])
+  @@index([archivedAt])
 }
 
 // A salon discovered on a public booking directory (Planity/Treatwell/Booksy/Fresha).

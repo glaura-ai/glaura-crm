@@ -49,6 +49,8 @@ export async function getSalons(f: SalonFilters, viewer?: ViewerScope) {
   const phoneMatchIds = phoneTerm ? await salonIdsMatchingPhone(phoneTerm) : [];
   return prisma.salon.findMany({
     where: {
+      // Merged duplicates stay in the table but out of the pipeline.
+      archivedAt: null,
       ...(f.status ? { status: f.status as SalonStatus } : {}),
       ...(f.metier ? { metier: { has: f.metier as Metier } } : {}),
       ...(f.type ? { type: f.type as SalonType } : {}),
@@ -98,7 +100,10 @@ export type SalonDetail = NonNullable<Awaited<ReturnType<typeof getSalon>>>;
 export async function getStatusCounts(viewer?: ViewerScope): Promise<Record<string, number>> {
   const rows = await prisma.salon.groupBy({
     by: ["status"],
-    where: viewer && viewer.role !== "ADMIN" ? { assignedToId: viewer.id } : undefined,
+    where: {
+      archivedAt: null,
+      ...(viewer && viewer.role !== "ADMIN" ? { assignedToId: viewer.id } : {}),
+    },
     _count: { _all: true },
   });
   return Object.fromEntries(rows.map((r) => [r.status, r._count._all]));
