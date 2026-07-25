@@ -105,12 +105,8 @@ async function main() {
             igCandidates: decision.candidates,
             igStatus: "CONFIRME",
             igCheckedAt: now,
-            // Followers just became known → the prospect may move up a tier.
-            tier: tierForProspect({
-              reviewCount: prospect.reviewCount,
-              googleReviewCount: prospect.googleReviewCount,
-              instagramFollowers: decision.best.followers,
-            }),
+            // Followers just became known → this is what sets the tier.
+            tier: tierForProspect({ instagramFollowers: decision.best.followers }),
           },
         });
         console.log(`[ig]   → CONFIRMÉ @${decision.best.username} (${decision.best.followers ?? "?"} followers)`);

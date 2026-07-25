@@ -16,9 +16,13 @@ export type UpsertCounts = {
   alreadyInCrm: number;
 };
 
+// Directory sweeps only. A salon worth calling is small and independent, not
+// inactive — 100 reviews is the floor for "this place actually takes bookings".
+// Instagram-discovered prospects bypass this entirely: they have no directory
+// listing and so no review count, and are gated on follower count instead.
 export function minReviews(): number {
   const parsed = Number(process.env.PROSPECT_MIN_REVIEWS);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 50;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 100;
 }
 
 export async function loadCrmIndex(): Promise<CrmIndex> {
@@ -94,7 +98,8 @@ export async function upsertProspects(
           sourceUrl: prospect.sourceUrl,
           status: matchedSalonId ? "DEJA_CRM" : "NOUVEAU",
           matchedSalonId,
-          tier: tierForProspect({ reviewCount: prospect.reviewCount, googleReviewCount: null, instagramFollowers: null }),
+          // New prospects have no Instagram yet — the enrichment cron tiers them.
+          tier: tierForProspect({ instagramFollowers: null }),
           firstSeenAt: now,
         },
       });
@@ -111,12 +116,9 @@ export async function upsertProspects(
         metiers: [...new Set([...existing.metiers, ...prospect.metiers])],
         status,
         matchedSalonId,
-        // Recompute with the refreshed review count + known followers/Google.
-        tier: tierForProspect({
-          reviewCount: prospect.reviewCount,
-          googleReviewCount: existing.googleReviewCount,
-          instagramFollowers: existing.instagramFollowers,
-        }),
+        // Tier follows Instagram, so a refreshed review count cannot change it —
+        // recomputed anyway to stay correct if the rule changes.
+        tier: tierForProspect({ instagramFollowers: existing.instagramFollowers }),
       },
     });
     counts.updated++;

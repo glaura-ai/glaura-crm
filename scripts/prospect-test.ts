@@ -285,20 +285,27 @@ ok("cookieHeaderFromNetscape builds header and requires sessionid", () => {
 
 // --- tiers ---------------------------------------------------------------------
 
-ok("computeTier ascending thresholds (T1 base → T4)", () => {
-  assert.equal(computeTier(60, null), 1); // in pool but <100 reviews
-  assert.equal(computeTier(120, null), 2); // ≥100 reviews, followers unknown
-  assert.equal(computeTier(120, 500), 2); // ≥100 reviews, <1000 followers
-  assert.equal(computeTier(120, 1500), 3); // ≥100 reviews AND ≥1000 followers
-  assert.equal(computeTier(300, 5000), 4); // ≥250 reviews AND ≥3000 followers
-  assert.equal(computeTier(300, 1500), 3); // 3000 followers not met → stays T3
-  assert.equal(computeTier(90, 9000), 1); // <100 reviews → base regardless of followers
+ok("computeTier ranks on Instagram followers (T1 unknown → T4 fort)", () => {
+  assert.equal(computeTier(null), 1); // Instagram not confirmed yet
+  assert.equal(computeTier(undefined), 1);
+  assert.equal(computeTier(0), 2); // confirmed account, no audience
+  assert.equal(computeTier(999), 2); // just under "moyen"
+  assert.equal(computeTier(1000), 3); // moyen starts at 1k
+  assert.equal(computeTier(4999), 3); // …and runs to just under 5k, no gap
+  assert.equal(computeTier(5000), 4); // big starts at 5k
+  assert.equal(computeTier(18652), 4);
 });
 
-ok("combinedReviews adds Google when present", () => {
+ok("reviews no longer influence the tier", () => {
+  // A small salon with a real audience must outrank a review-heavy one with none.
+  assert.ok(tierForProspect({ instagramFollowers: 6000 }) > tierForProspect({ instagramFollowers: null }));
+  assert.equal(tierForProspect({ instagramFollowers: null }), 1);
+  assert.equal(tierForProspect({ instagramFollowers: 2000 }), 3);
+});
+
+ok("combinedReviews adds Google when present (tournée tiebreaker)", () => {
   assert.equal(combinedReviews(60, null), 60);
   assert.equal(combinedReviews(60, 50), 110);
-  assert.equal(tierForProspect({ reviewCount: 60, googleReviewCount: 50, instagramFollowers: null }), 2);
 });
 
 console.log(`\n${passed} tests OK`);

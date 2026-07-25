@@ -1,16 +1,26 @@
 // Prospecting tiers (ascending: T1 = baseline … T4 = top).
-// Ranks a prospect by combined review count (booking directory + Google, once
-// available) and Instagram followers. Followers are only known for IG-confirmed
-// prospects (null → treated as 0, so unconfirmed prospects can't reach T3/T4).
+//
+// Instagram presence is the primary rank: the salons worth calling are small,
+// independent ones with a real audience, not whichever salon has accumulated the
+// most directory reviews. Review count still matters, but only as a tiebreaker
+// within a tier (generateTournee sorts on it after tier).
+//
+// Followers are known only for IG-confirmed prospects, so an unconfirmed one sits
+// at T1 until the enrichment cron reaches it — T1 means "Instagram unknown", not
+// "bad prospect".
 
 export const MIN_TIER = 1;
 export const MAX_TIER = 4;
 
+// Follower thresholds defining the bands.
+export const IG_BIG_MIN = 5000;
+export const IG_MEDIUM_MIN = 1000;
+
 export const TIER_LABEL: Record<number, string> = {
-  1: "Base",
-  2: "Actif",
-  3: "Établi",
-  4: "Référence",
+  1: "IG inconnu",
+  2: "IG faible",
+  3: "IG moyen",
+  4: "IG fort",
 };
 
 // Tailwind chip classes per tier.
@@ -25,18 +35,15 @@ export function combinedReviews(reviewCount: number, googleReviewCount: number |
   return reviewCount + (googleReviewCount ?? 0);
 }
 
-export function computeTier(reviews: number, followers: number | null | undefined): number {
-  const f = followers ?? 0;
-  if (reviews >= 250 && f >= 3000) return 4;
-  if (reviews >= 100 && f >= 1000) return 3;
-  if (reviews >= 100) return 2;
-  return 1;
+// `followers` null/undefined means Instagram has not been confirmed yet, which is
+// distinct from a confirmed account that happens to have few followers (T2).
+export function computeTier(followers: number | null | undefined): number {
+  if (followers == null) return 1;
+  if (followers >= IG_BIG_MIN) return 4;
+  if (followers >= IG_MEDIUM_MIN) return 3;
+  return 2;
 }
 
-export function tierForProspect(p: {
-  reviewCount: number;
-  googleReviewCount?: number | null;
-  instagramFollowers?: number | null;
-}): number {
-  return computeTier(combinedReviews(p.reviewCount, p.googleReviewCount), p.instagramFollowers);
+export function tierForProspect(p: { instagramFollowers?: number | null }): number {
+  return computeTier(p.instagramFollowers);
 }
