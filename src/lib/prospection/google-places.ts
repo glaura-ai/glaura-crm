@@ -55,24 +55,61 @@ type SearchTextResponse = {
   error?: { code?: number; status?: string; message?: string };
 };
 
-// Minimum overlap between the two normalized names, as a fraction of the longer
-// one. Containment alone is too weak: "ongl" is contained in "ongleriedumarais"
-// but says nothing. Requiring the common part to be most of the name rejects
-// that while still allowing "Baton Rouge" vs "Baton Rouge Paris" (0.67).
 const MIN_NAME_OVERLAP = 0.5;
 const MIN_NAME_LENGTH = 4;
+
+// Words that carry no identifying power for a Paris beauty business: they are
+// shared by half the pool, so matching on them alone means nothing.
+const GENERIC_TOKENS = new Set([
+  "paris", "france", "salon", "institut", "beaute", "beauty", "esthetique", "esthetic",
+  "coiffure", "coiffeur", "barber", "barbershop", "spa", "nails", "ongles", "onglerie",
+  "studio", "atelier", "maison", "by", "de", "du", "des", "la", "le", "les", "et", "and",
+  "hair", "the", "chez", "center", "centre",
+]);
+
+function distinctiveTokens(name: string): string[] {
+  const tokens = name
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+  return tokens.filter((t) => t.length >= 3 && !GENERIC_TOKENS.has(t) && !/^\d+$/.test(t));
+}
 
 // Google returns a plausible-looking business for almost any query, so a
 // returned place is not yet a match — this is what stops a neighbouring
 // business being recorded as the salon's profile.
 //
+// Compares distinctive words rather than raw strings, because the two names are
+// rarely written the same way. Both of these are the same salon:
+//   "Dozz Beauty"   vs "DOZZ BEAUTY - Paris 20ème (75) Institut de beauté…"  (SEO-stuffed title)
+//   "Valerie Krief" vs "Krief Valérie"                                        (surname first)
+// and substring matching rejects both, which cost ~13% of profiles in testing.
+// Meanwhile "Belle Glamour Paris" vs "Lila Glam Lashes" shares no distinctive
+// word and is still rejected.
+//
 // Deliberately biased toward rejecting: a missed profile only costs a prospect
 // some rank (GBP is a ranking signal, never a filter), whereas a wrong one puts
 // bad data in front of a rep.
 export function isPlausibleMatch(prospectName: string, placeName: string): boolean {
+  if (!normalizeName(prospectName) || !normalizeName(placeName)) return false;
+
+  const prospectTokens = distinctiveTokens(prospectName);
+  const placeTokens = new Set(distinctiveTokens(placeName));
+
+  if (prospectTokens.length > 0 && placeTokens.size > 0) {
+    const shared = prospectTokens.filter((t) => placeTokens.has(t));
+    if (shared.length === 0) return false;
+    // Judge against the smaller set: one name routinely carries extras the other
+    // omits ("Camille Ongles - Rue de Lévis" vs "Camille Ongles").
+    return shared.length / Math.min(prospectTokens.length, placeTokens.size) >= MIN_NAME_OVERLAP;
+  }
+
+  // Every word was generic ("Institut Beauté Paris") — fall back to comparing the
+  // whole normalized strings, where only a near-identical name can pass.
   const a = normalizeName(prospectName);
   const b = normalizeName(placeName);
-  if (!a || !b) return false;
   const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
   if (shorter.length < MIN_NAME_LENGTH) return shorter === longer;
   if (!longer.includes(shorter)) return false;

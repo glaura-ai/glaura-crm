@@ -331,6 +331,31 @@ ok("isPlausibleMatch does not let very short names match by coincidence", () => 
   assert.equal(isPlausibleMatch("Ongl", "Ongl"), true);
 });
 
+// These four are real Places responses observed while smoke-testing 15 prospects
+// from the pool; substring matching got the first two wrong.
+ok("isPlausibleMatch survives SEO-stuffed Google titles", () => {
+  assert.equal(
+    isPlausibleMatch("Dozz Beauty", "DOZZ BEAUTY - Paris 20ème (75) Institut de beauté, soins & bien-être"),
+    true,
+  );
+});
+
+ok("isPlausibleMatch survives reversed word order (surname-first listings)", () => {
+  assert.equal(isPlausibleMatch("Valerie Krief", "Krief Valérie"), true);
+});
+
+ok("isPlausibleMatch tolerates extras on either side", () => {
+  assert.equal(isPlausibleMatch("Camille Ongles - Rue de Lévis", "Camille Ongles"), true);
+  assert.equal(isPlausibleMatch("Hey Sois Belle !", "Hey, Sois Belle! Charonne"), true);
+});
+
+ok("isPlausibleMatch still rejects a different salon nearby", () => {
+  // Same arrondissement, no distinctive word in common.
+  assert.equal(isPlausibleMatch("Belle Glamour Paris", "Lila Glam Lashes"), false);
+  // Generic words alone must never carry a match.
+  assert.equal(isPlausibleMatch("Institut Beauté Paris", "Salon Beauté Paris"), false);
+});
+
 ok("buildQuery skips missing address parts", () => {
   assert.equal(buildQuery("Salon X", "12 rue Oberkampf", "75011 Paris"), "Salon X, 12 rue Oberkampf, 75011 Paris");
   assert.equal(buildQuery("Salon X", null, "75011 Paris"), "Salon X, 75011 Paris");
