@@ -120,12 +120,8 @@ enum EmailJobStatus {
   FAILED
 }
 
-enum EmailTemplate {
-  INTRO
-  DEMO_FOLLOW_UP
-  RELANCE
-  SIGNATURE_NEXT_STEPS
-}
+// NOTE: the `EmailTemplate` enum that used to live here became a model (below) —
+// templates are editable data now, not a deploy-gated code constant.
 
 // ── Models ───────────────────────────────────────────────────────
 
@@ -144,6 +140,7 @@ model User {
   reminders      Reminder[]
   onboardingJobs OnboardingJob[]
   emailJobs      EmailJob[]
+  emailTemplates EmailTemplate[]
   tournees       Tournee[]
 }
 
@@ -328,9 +325,13 @@ model EmailJob {
   requestedById String?
   requestedBy   User?   @relation(fields: [requestedById], references: [id], onDelete: SetNull)
 
-  to       String
-  from     String?
-  template EmailTemplate
+  to   String
+  from String?
+  // Snapshot of the template key at send time. Kept as a plain string so the
+  // history stays readable even if the template is later renamed or archived.
+  templateKey String
+  templateId  String?
+  template    EmailTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   subject  String
   body     String       @db.Text
   status   EmailJobStatus @default(QUEUED)
@@ -343,6 +344,35 @@ model EmailJob {
 
   @@index([status, createdAt])
   @@index([salonId, createdAt])
+}
+
+// Follow-up email templates, editable from /modeles by any signed-in user.
+// Bodies use the `{{salon}}` / `{{contact}}` / `{{bookingUrl}}` placeholders
+// rendered by src/lib/emailTemplates.ts.
+model EmailTemplate {
+  id    String @id @default(cuid())
+  // Slug derived from the label on creation and never changed afterwards, so
+  // renaming a template does not orphan the EmailJob rows that reference it.
+  key   String @unique
+  label String
+
+  subject String
+  body    String @db.Text
+
+  sortOrder Int @default(0)
+  // Soft delete: archived templates leave the dropdown but stay joinable from
+  // the jobs they produced.
+  archivedAt DateTime?
+
+  createdById String?
+  createdBy   User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  jobs EmailJob[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([archivedAt, sortOrder])
 }
 
 model OnboardingJob {

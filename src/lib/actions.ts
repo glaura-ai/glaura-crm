@@ -7,12 +7,11 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { isDailyPriorityActive, startOfDay } from "@/lib/dailyPriority";
 import { geocodeAddress } from "@/lib/geocode";
-import { uniqueSalonSlug } from "@/lib/slugs";
-import { EMAIL_TEMPLATES } from "@/lib/emailTemplates";
+import { uniqueEmailTemplateKey, uniqueSalonSlug } from "@/lib/slugs";
 import { defaultEmailFrom } from "@/lib/email";
 import { decrypt } from "@/lib/crypto";
 import { canRevealOnboardingPassword } from "@/lib/onboarding-access";
-import type { ActivityType, BookingTool, EmailTemplate, Metier, SalonStatus, SalonType } from "@/generated/prisma/enums";
+import type { ActivityType, BookingTool, Metier, SalonStatus, SalonType } from "@/generated/prisma/enums";
 
 async function currentUser() {
   const s = await auth();
@@ -255,7 +254,7 @@ export async function completeReminder(reminderId: string, salonId: string) {
 
 const emailJobSchema = z.object({
   to: z.email(),
-  template: z.enum(EMAIL_TEMPLATES),
+  templateId: z.string().trim().min(1),
   subject: z.string().trim().min(2).max(160),
   body: z.string().trim().min(10).max(6000),
 });
@@ -264,10 +263,18 @@ export async function queueFollowUpEmail(salonId: string, fd: FormData) {
   const me = await assertCanAccessSalon(salonId);
   const payload = emailJobSchema.parse({
     to: (fd.get("to") || "").toString().trim(),
-    template: (fd.get("template") || "").toString(),
+    templateId: (fd.get("templateId") || "").toString(),
     subject: (fd.get("subject") || "").toString(),
     body: (fd.get("body") || "").toString(),
   });
+
+  // Snapshot the key rather than trusting the client for it, so the job's
+  // provenance can't be spoofed and survives a later rename of the template.
+  const template = await prisma.emailTemplate.findUnique({
+    where: { id: payload.templateId },
+    select: { id: true, key: true },
+  });
+  if (!template) throw new Error("Modèle d'email introuvable");
 
   await prisma.emailJob.create({
     data: {
@@ -275,7 +282,8 @@ export async function queueFollowUpEmail(salonId: string, fd: FormData) {
       requestedById: me.id,
       to: payload.to,
       from: defaultEmailFrom(),
-      template: payload.template as EmailTemplate,
+      templateId: template.id,
+      templateKey: template.key,
       subject: payload.subject,
       body: payload.body,
       status: "QUEUED",
@@ -286,6 +294,77 @@ export async function queueFollowUpEmail(salonId: string, fd: FormData) {
   revalidatePath(`/salons/${salonId}`);
   revalidatePath("/salons");
   revalidatePath("/dashboard");
+}
+
+// ── Email templates ──────────────────────────────────────────────
+// Shared, org-wide sales copy edited from /modeles. Any signed-in user may
+// change them, so every write is attributed and edits take effect immediately
+// for the whole team.
+
+const emailTemplateSchema = z.object({
+  label: z.string().trim().min(2).max(60),
+  subject: z.string().trim().min(2).max(160),
+  body: z.string().trim().min(10).max(6000),
+});
+
+function parseTemplateForm(fd: FormData) {
+  return emailTemplateSchema.parse({
+    label: (fd.get("label") || "").toString(),
+    subject: (fd.get("subject") || "").toString(),
+    body: (fd.get("body") || "").toString(),
+  });
+}
+
+export async function createEmailTemplate(fd: FormData) {
+  const user = await requireCurrentUser();
+  const payload = parseTemplateForm(fd);
+
+  // New templates land at the end of the dropdown rather than silently ahead of
+  // the ones the team already knows.
+  const last = await prisma.emailTemplate.aggregate({ _max: { sortOrder: true } });
+
+  await prisma.emailTemplate.create({
+    data: {
+      key: await uniqueEmailTemplateKey(payload.label),
+      label: payload.label,
+      subject: payload.subject,
+      body: payload.body,
+      sortOrder: (last._max.sortOrder ?? 0) + 1,
+      createdById: user.id,
+    },
+  });
+
+  revalidatePath("/modeles");
+}
+
+export async function updateEmailTemplate(id: string, fd: FormData) {
+  await requireCurrentUser();
+  const payload = parseTemplateForm(fd);
+
+  // `key` is deliberately not updated — EmailJob rows snapshot it.
+  await prisma.emailTemplate.update({
+    where: { id },
+    data: { label: payload.label, subject: payload.subject, body: payload.body },
+  });
+
+  revalidatePath("/modeles");
+}
+
+/** Soft delete: drops the template from the dropdown, keeps past jobs joinable. */
+export async function archiveEmailTemplate(id: string) {
+  await requireCurrentUser();
+
+  const remaining = await prisma.emailTemplate.count({ where: { archivedAt: null } });
+  if (remaining <= 1) throw new Error("Impossible d'archiver le dernier modèle — il en faut au moins un.");
+
+  await prisma.emailTemplate.update({ where: { id }, data: { archivedAt: new Date() } });
+  revalidatePath("/modeles");
+}
+
+export async function restoreEmailTemplate(id: string) {
+  await requireCurrentUser();
+  await prisma.emailTemplate.update({ where: { id }, data: { archivedAt: null } });
+  revalidatePath("/modeles");
 }
 
 // Account-readiness: queue and start an onboarding job for the VPS engine.
