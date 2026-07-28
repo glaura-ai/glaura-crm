@@ -343,16 +343,13 @@ export type RevealPasswordResult = { ok: true; password: string } | { ok: false;
  */
 export async function revealOnboardingPassword(jobId: string): Promise<RevealPasswordResult> {
   const user = await currentUser();
-  if (!user?.id) return { ok: false, error: "Non authentifié" };
+  if (!canRevealOnboardingPassword(user)) return { ok: false, error: "Non authentifié" };
 
   const job = await prisma.onboardingJob.findUnique({
     where: { id: jobId },
-    select: { id: true, loginPassword: true, salon: { select: { assignedToId: true } } },
+    select: { id: true, loginPassword: true },
   });
   if (!job) return { ok: false, error: "Job d'onboarding introuvable" };
-  if (!canRevealOnboardingPassword(user, job.salon)) {
-    return { ok: false, error: "Réservé au commercial assigné ou à un admin" };
-  }
   if (!job.loginPassword) return { ok: false, error: "Aucun mot de passe enregistré pour ce job" };
 
   let password: string;
@@ -366,6 +363,7 @@ export async function revealOnboardingPassword(jobId: string): Promise<RevealPas
 
   try {
     await auditPasswordReveal(jobId, user.id, user.email ?? null);
+
   } catch {
     // No trail, no credential.
     return { ok: false, error: "Journalisation impossible — mot de passe non affiché" };

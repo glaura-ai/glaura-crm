@@ -1,5 +1,5 @@
 /**
- * PURE authorization predicates for onboarded-account credentials.
+ * PURE authorization predicate for onboarded-account credentials.
  *
  * Kept separate from actions.ts so the salon page (deciding whether to render
  * the reveal control) and the server action (enforcing the rule before it
@@ -13,25 +13,22 @@ export interface CredentialViewer {
   role?: string | null;
 }
 
-/** The salon fields the credential rules depend on. */
-export interface CredentialSalon {
-  assignedToId: string | null;
-}
-
 /**
- * Who may reveal an onboarded salon account's password: the assigned commercial
- * or any admin.
+ * Who may reveal an onboarded salon account's password: any signed-in CRM user.
  *
- * Deliberately NOT gated on `SalonStatus` the way `triggerOnboarding` is — the
- * rep needs the credential to run the demo, and the demo is what gets the salon
- * to SIGNE in the first place. Gating on SIGNE would lock the password away
- * during the exact window it is needed.
+ * Deliberately NOT scoped to the assigned commercial. The CRM is an internal
+ * staff tool, reps cover for each other on demos, and every reveal is already
+ * audit-logged — so per-salon ownership would mostly block colleagues mid-call
+ * while doing nothing about the actual risk (a shared or stolen CRM session).
+ *
+ * Authentication is therefore the whole gate: keep the `!viewer?.id` check
+ * strict, since an anonymous caller must never reach the decrypt path.
+ *
+ * Narrows to a viewer with a usable `id` so the caller can attribute the audit
+ * event without re-checking (or asserting) that one exists.
  */
 export function canRevealOnboardingPassword(
   viewer: CredentialViewer | null | undefined,
-  salon: CredentialSalon,
-): boolean {
-  if (!viewer?.id) return false;
-  if (viewer.role === "ADMIN") return true;
-  return !!salon.assignedToId && salon.assignedToId === viewer.id;
+): viewer is CredentialViewer & { id: string } {
+  return !!viewer?.id;
 }

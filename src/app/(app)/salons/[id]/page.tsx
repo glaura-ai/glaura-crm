@@ -67,7 +67,7 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
   const latestJob = salon.onboardingJobs[0];
   const onboardingBusy = latestJob?.status === "QUEUED" || latestJob?.status === "PROCESSING";
   const canTrigger = !!me && hasBookingUrl && !onboardingBusy && (isAdmin || salon.assignedToId === me.id) && (isAdmin || salon.status === "SIGNE");
-  const canRevealPassword = canRevealOnboardingPassword(me, salon);
+  const canRevealPassword = canRevealOnboardingPassword(me);
   const visibleActivities = salon.activities.filter((activity) => activity.type !== "EMAIL");
   const editSalon = {
     name: salon.name,
