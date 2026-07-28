@@ -14,6 +14,7 @@ const ICONS = {
   salons: "M4 6h16M4 12h16M4 18h16",
   prospection: "M12 21s-7-5.5-7-11a7 7 0 0114 0c0 5.5-7 11-7 11zM12 12a2 2 0 100-4 2 2 0 000 4z",
   onboarding: "M4 19V5M4 19h16M8 15l3-3 3 2 5-7",
+  templates: "M3 8l9 6 9-6M5 5h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z",
   calendar: "M8 2v4M16 2v4M3 9h18M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z",
 };
 
@@ -33,6 +34,9 @@ export function Sidebar({ user }: { user: { name?: string | null; email?: string
       </Link>
       <Link href="/prospection" title="Prospection" className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900">
         <Icon d={ICONS.prospection} />
+      </Link>
+      <Link href="/modeles" title="Modèles d'email" className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900">
+        <Icon d={ICONS.templates} />
       </Link>
       {isAdmin && (
         <Link href="/onboarding" title="Monitoring onboarding" className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900">

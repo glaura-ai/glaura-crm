@@ -6,6 +6,7 @@ import { EmailFollowUpForm } from "@/components/EmailFollowUpForm";
 import { OnboardingPasswordReveal } from "@/components/OnboardingPasswordReveal";
 import { SalonEditModal } from "@/components/SalonEditModal";
 import { getSalon, getAssignableUsers } from "@/lib/salons";
+import { prisma } from "@/lib/db";
 import { addReminder, changeStatus, completeReminder, logActivity, queueFollowUpEmail, setDailyPriority, triggerOnboarding, updateSalon } from "@/lib/actions";
 import { isDailyPriorityActive } from "@/lib/dailyPriority";
 import { canRevealOnboardingPassword } from "@/lib/onboarding-access";
@@ -56,9 +57,16 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
   const session = await auth();
   const me = session?.user;
   const isAdmin = me?.role === "ADMIN";
-  const [salon, assignableUsers] = await Promise.all([
+  const [salon, assignableUsers, emailTemplates] = await Promise.all([
     getSalon(id, me ? { id: me.id, role: me.role } : undefined),
     isAdmin ? getAssignableUsers() : Promise.resolve([]),
+    // Archived templates stay out of the dropdown but remain joinable from the
+    // jobs they already produced.
+    prisma.emailTemplate.findMany({
+      where: { archivedAt: null },
+      orderBy: { sortOrder: "asc" },
+      select: { id: true, label: true, subject: true, body: true },
+    }),
   ]);
   if (!salon) notFound();
 
@@ -301,6 +309,7 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
                 contactEmail: salon.contactEmail,
                 bookingUrl: salon.bookingUrl,
               }}
+              templates={emailTemplates}
             />
             {salon.emailJobs.length > 0 && (
               <ul className="mt-4 space-y-2">
