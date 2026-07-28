@@ -1,0 +1,66 @@
+# Production stack for crm.glaura.ai (VPS 204.168.167.79).
+#
+# The image is built by CI (.github/workflows/build-image.yml) and pulled from
+# ghcr — nothing is built here, so this file is pure run configuration. It is
+# the source of truth for that configuration: the deploy skill copies it to
+# /opt/glaura/glaura-crm/docker-compose.yml on every deploy, so edits land by
+# being merged to main, not by hand-editing the server.
+#
+# Two things stay on the host and are deliberately NOT in this repo:
+#   - .env.docker  — all three services' environment, secrets included
+#   - /opt/glaura/secrets/firebase-adminsdk.json — the service-account key
+#
+# network_mode: host because Postgres (glaura_crm) runs on the VPS host rather
+# than in Docker; the app reaches it at localhost:5432. That also means `ports:`
+# would be ignored — web binds PORT (3102) from the env file directly.
+
+name: glaura-crm
+
+x-crm-service: &crm-service
+  image: ghcr.io/glaura-ai/glaura-crm:latest
+  restart: unless-stopped
+  network_mode: host
+  env_file: /opt/glaura/glaura-crm/.env.docker
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  web:
+    <<: *crm-service
+    # Pinned so the name survives the compose default (<project>-<service>-1).
+    # glaura-alloy scrapes logs by container name, and the deploy/verify steps
+    # reference these — a rename would silently break both.
+    container_name: glaura-crm-web
+    command: ["node", "server.js"]
+    healthcheck:
+      # Uses node rather than curl/wget: node is guaranteed present in this
+      # image, the others are not.
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3102/login').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  onboarding-worker:
+    <<: *crm-service
+    container_name: glaura-crm-onboarding-worker
+    # Playwright needs root to launch Chromium in this image.
+    user: root
+    command: ["npm", "run", "onboard:worker"]
+    volumes:
+      # GOOGLE_APPLICATION_CREDENTIALS in .env.docker points at this exact path,
+      # so the mount is mirrored host→container. Without it every Firebase
+      # account write fails at auth.
+      - /opt/glaura/secrets/firebase-adminsdk.json:/opt/glaura/secrets/firebase-adminsdk.json:ro
+
+  email-worker:
+    <<: *crm-service
+    container_name: glaura-crm-email-worker
+    command: ["npm", "run", "email:worker"]

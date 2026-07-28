@@ -1,21 +1,23 @@
 ---
 name: deploy-crm
-description: Deploy glaura-crm to the VPS — wait for the GitHub Actions image build, pull ghcr.io/glaura-ai/glaura-crm:latest, recreate the web + onboarding-worker + email-worker containers, and verify. Use when asked to deploy the CRM, ship it, push it live, or release the current main.
+description: Deploy glaura-crm to the VPS — wait for the GitHub Actions image build, then pull ghcr.io/glaura-ai/glaura-crm:latest and roll the compose stack (web + onboarding-worker + email-worker) and verify. Use when asked to deploy the CRM, ship it, push it live, or release the current main.
 ---
 
 # Deploy glaura-crm
 
-Deploys whatever is on `main` to https://crm.glaura.ai. There is no compose file
-and no deploy script on the server — the three containers are plain `docker run`
-processes, so deploying means pull + recreate with the exact flags below.
+Deploys whatever is on `main` to https://crm.glaura.ai. CI builds the image on
+every push to `main`; deploying is pull + `compose up -d`. Nothing is built on
+the server.
 
 ## Facts about the target
 
-- VPS: `ssh root@204.168.167.79`, app checkout at `/opt/glaura/glaura-crm`
-- Image: `ghcr.io/glaura-ai/glaura-crm:latest`, built by `.github/workflows/build-image.yml` on every push to `main`
-- Env file for all three containers: `/opt/glaura/glaura-crm/.env.docker` (NOT `.env`, which is the older 26-key file)
-- Postgres `glaura_crm` runs on the VPS **host**, not in Docker. Containers use `--network host`
+- VPS: `ssh root@204.168.167.79`, stack at `/opt/glaura/glaura-crm`
+- Image: `ghcr.io/glaura-ai/glaura-crm:latest`, built by `.github/workflows/build-image.yml`
+- Run config: `docker-compose.yml` **in this repo** is the source of truth. Step 4 copies it up, so server-side edits are overwritten — change it here and merge
+- Env file: `/opt/glaura/glaura-crm/.env.docker` on the host, NOT in the repo (secrets). Not the older 26-key `.env` sitting next to it
+- Postgres `glaura_crm` runs on the VPS **host**, not in Docker — hence `network_mode: host`
 - Web listens on `PORT=3102`
+- `/opt/glaura/glaura-crm` also holds a stale git checkout (unrelated to deploys, ignore it)
 
 ## Steps
 
@@ -34,15 +36,15 @@ they think includes it.
 ### 2. Wait for the image
 
 Match the run's `headSha` to the commit you are deploying. If it is
-`in_progress`, wait for it:
+`in_progress`:
 
 ```bash
 gh run watch <databaseId> --exit-status
 ```
 
-The build takes roughly 2-4 minutes. Never deploy on a `failure` conclusion —
-`:latest` still points at the previous good image, so a pull would silently
-"succeed" while deploying nothing new.
+Roughly 2-4 minutes. Never deploy on a `failure` conclusion — `:latest` still
+points at the previous good image, so the pull would silently "succeed" while
+deploying nothing new.
 
 ### 3. Check for schema changes
 
@@ -50,83 +52,71 @@ The build takes roughly 2-4 minutes. Never deploy on a `failure` conclusion —
 git diff --name-only <previously-deployed-sha>..HEAD -- prisma/
 ```
 
-If anything under `prisma/migrations/` changed, run migrations BEFORE recreating
-the containers, and tell the user first — this one is not automatic:
+If anything under `prisma/migrations/` changed, run migrations BEFORE step 4 and
+tell the user first — this is not automatic:
 
 ```bash
-ssh root@204.168.167.79 'cd /opt/glaura/glaura-crm && docker run --rm --network host \
-  --env-file /opt/glaura/glaura-crm/.env.docker \
-  ghcr.io/glaura-ai/glaura-crm:latest npx prisma migrate deploy'
+ssh root@204.168.167.79 'cd /opt/glaura/glaura-crm && docker compose run --rm --no-deps web npx prisma migrate deploy'
 ```
 
-### 4. Pull and recreate
+### 4. Deploy
 
 ```bash
+scp docker-compose.yml root@204.168.167.79:/opt/glaura/glaura-crm/docker-compose.yml
 ssh root@204.168.167.79 'set -e
-docker pull ghcr.io/glaura-ai/glaura-crm:latest
-
-docker rm -f glaura-crm-web glaura-crm-onboarding-worker glaura-crm-email-worker
-
-docker run -d --name glaura-crm-web --restart unless-stopped --network host \
-  --env-file /opt/glaura/glaura-crm/.env.docker \
-  ghcr.io/glaura-ai/glaura-crm:latest node server.js
-
-docker run -d --name glaura-crm-onboarding-worker --restart unless-stopped --network host --user root \
-  --env-file /opt/glaura/glaura-crm/.env.docker \
-  -v /opt/glaura/secrets/firebase-adminsdk.json:/opt/glaura/secrets/firebase-adminsdk.json:ro \
-  ghcr.io/glaura-ai/glaura-crm:latest npm run onboard:worker
-
-docker run -d --name glaura-crm-email-worker --restart unless-stopped --network host \
-  --env-file /opt/glaura/glaura-crm/.env.docker \
-  ghcr.io/glaura-ai/glaura-crm:latest npm run email:worker
-'
+cd /opt/glaura/glaura-crm
+docker compose config --quiet
+docker compose pull
+docker compose up -d'
 ```
 
-Flags that are load-bearing, all recovered from the running containers — do not
-drop them when editing this recipe:
-
-- **onboarding-worker only**: `--user root` (Playwright needs it) and the
-  read-only bind mount of `firebase-adminsdk.json`, which is what
-  `GOOGLE_APPLICATION_CREDENTIALS` in the env file points at. Without the mount
-  every account write fails at Firebase auth.
-- **web** runs as the image's default `nextjs` user — do not add `--user root`.
+`up -d` recreates only what actually changed, and `config --quiet` fails fast on
+a malformed file instead of half-rolling the stack.
 
 ### 5. Verify
 
 ```bash
-ssh root@204.168.167.79 'docker ps --filter name=glaura-crm --format "{{.Names}}\t{{.Status}}\t{{.Image}}"
-echo "--- web"; docker logs --tail 15 glaura-crm-web
-echo "--- onboarding"; docker logs --tail 15 glaura-crm-onboarding-worker
-echo "--- email"; docker logs --tail 15 glaura-crm-email-worker
-echo "--- http"; curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3102/login'
+ssh root@204.168.167.79 'sleep 25
+cd /opt/glaura/glaura-crm
+docker compose ps --format "{{.Name}}\t{{.Status}}"
+echo "--- http"; curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3102/login
+docker compose logs --tail 8 onboarding-worker email-worker'
 ```
 
-Expect three containers `Up`, `/login` returning `200`, and no crash loop
-(`Restarting` in the status column means it is failing to boot — read the logs
-before touching anything else).
+Expect three containers `Up`, web `(healthy)`, `/login` returning `200`, and
+both workers logging `polling every 60s`. `Restarting` means it is failing to
+boot — read the logs before touching anything else.
 
-Report the deployed commit sha and the verification output. Do not claim the
+Report the deployed commit sha and the verification output. Do not claim a
 feature works because containers are up — say what you actually checked.
 
 ## Rollback
 
-`:latest` is overwritten by each build, so roll back by digest. List what is on
-the host and re-run the step 4 commands against the previous image id:
+`:latest` is overwritten by each build, so roll back by digest. Find the
+previous image and pin it for one boot:
 
 ```bash
-ssh root@204.168.167.79 'docker images ghcr.io/glaura-ai/glaura-crm --format "{{.ID}}\t{{.Tag}}\t{{.CreatedAt}}"'
+ssh root@204.168.167.79 'docker images ghcr.io/glaura-ai/glaura-crm --format "{{.ID}}\t{{.Tag}}\t{{.CreatedAt}}"
+cd /opt/glaura/glaura-crm
+CRM_IMAGE=ghcr.io/glaura-ai/glaura-crm@sha256:<digest> docker compose up -d'
 ```
 
-Faster alternative when the bad commit is known: `git revert`, push, and deploy
-again — one build cycle, and the rollback is recorded in history.
+That last line only works if `docker-compose.yml` has been parameterised with
+`${CRM_IMAGE:-ghcr.io/glaura-ai/glaura-crm:latest}` — as of now it has not, so
+the actual rollback is either editing the `image:` line on the server (and
+remembering step 4 will overwrite it next deploy) or, preferably, `git revert` +
+push + deploy: one build cycle, and the rollback is recorded in history.
 
 ## Notes
 
 - Deploying is user-authorized per-request. Ask before deploying if the user did
   not explicitly ask for it in this turn.
-- `docker rm -f` drops the three containers for a few seconds — crm.glaura.ai
-  returns 502 during the gap. It is an internal sales tool, so this is normally
-  fine, but say so if a rep is mid-demo.
+- Recreating drops the containers for a few seconds — crm.glaura.ai returns 502
+  during the gap. Fine for an internal tool, but say so if a rep is mid-demo.
 - In-flight onboarding jobs die with the worker. A killed job stays `PROCESSING`
-  and will not self-heal; check for one before deploying:
-  `su postgres -c "psql -d glaura_crm -c \"SELECT id, status FROM \\\"OnboardingJob\\\" WHERE status IN ('QUEUED','PROCESSING');\""`
+  and will not self-heal; check before deploying:
+  `ssh root@204.168.167.79 $'echo "SELECT id, status FROM \\"OnboardingJob\\" WHERE status IN (\'QUEUED\',\'PROCESSING\');" | su postgres -c "psql -d glaura_crm -f -"'`
+- The config that is easy to lose and expensive to omit now lives in
+  `docker-compose.yml` with comments explaining why: the onboarding worker's
+  `user: root` + `firebase-adminsdk.json` bind mount, `network_mode: host`, and
+  the pinned `container_name`s that glaura-alloy scrapes by.
