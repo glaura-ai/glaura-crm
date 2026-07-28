@@ -17,7 +17,10 @@
 name: glaura-crm
 
 x-crm-service: &crm-service
-  image: ghcr.io/glaura-ai/glaura-crm:latest
+  # Overridable so a rollback is `CRM_IMAGE=…@sha256:<digest> docker compose up -d`
+  # rather than editing this file on the server (which the next deploy would
+  # overwrite). Defaults to the tag CI publishes.
+  image: ${CRM_IMAGE:-ghcr.io/glaura-ai/glaura-crm:latest}
   restart: unless-stopped
   network_mode: host
   env_file: /opt/glaura/glaura-crm/.env.docker

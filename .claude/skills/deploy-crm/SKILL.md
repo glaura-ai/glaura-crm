@@ -101,11 +101,10 @@ cd /opt/glaura/glaura-crm
 CRM_IMAGE=ghcr.io/glaura-ai/glaura-crm@sha256:<digest> docker compose up -d'
 ```
 
-That last line only works if `docker-compose.yml` has been parameterised with
-`${CRM_IMAGE:-ghcr.io/glaura-ai/glaura-crm:latest}` — as of now it has not, so
-the actual rollback is either editing the `image:` line on the server (and
-remembering step 4 will overwrite it next deploy) or, preferably, `git revert` +
-push + deploy: one build cycle, and the rollback is recorded in history.
+`CRM_IMAGE` is a one-boot override — it is not persisted, so the next deploy
+returns the stack to `:latest`. Treat it as a way to stop the bleeding, then fix
+forward properly with `git revert` + push + deploy, which records the rollback
+in history and survives the next deploy.
 
 ## Notes
 
