@@ -11,10 +11,11 @@
  *   2. buildSearchNameList keyword extraction.
  *   3. slugify + a simulated companyUserName suffix loop.
  *   4. buildUserProfile invariants (disabled account, CRM trace fields,
- *      salon_images as a string).
+ *      salon_images as an array).
  */
 
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { hoursToTiming, type HoursInput, type TimingResult } from "../src/lib/onboarding/hours";
@@ -122,14 +123,25 @@ function runMjs(input: Record<string, string>): TimingResult {
 
 let firstHoursExample: { input: HoursInput; output: TimingResult } | null = null;
 
+// The legacy `.mjs` was retired with the `claude -p` plumbing (P5), so the
+// parity check only runs where that script still exists. Everything else in
+// this suite must still run — a missing reference implementation is a skip,
+// not a crash.
+const hoursParityAvailable = existsSync(HOURS_MJS_PATH);
+if (!hoursParityAvailable) {
+  console.log(`SKIP  hoursToTiming parity — ${HOURS_MJS_PATH} not present (retired in P5)`);
+}
+
 for (const testCase of HOURS_CASES) {
-  const expected = runMjs(testCase.mjsInput);
   const actual = hoursToTiming(testCase.tsInput);
-  check(
-    `hoursToTiming parity: ${testCase.name}`,
-    deepEqual(expected, actual),
-    `mjs=${JSON.stringify(expected)} ts=${JSON.stringify(actual)}`,
-  );
+  if (hoursParityAvailable) {
+    const expected = runMjs(testCase.mjsInput);
+    check(
+      `hoursToTiming parity: ${testCase.name}`,
+      deepEqual(expected, actual),
+      `mjs=${JSON.stringify(expected)} ts=${JSON.stringify(actual)}`,
+    );
+  }
   if (!firstHoursExample) firstHoursExample = { input: testCase.tsInput, output: actual };
 }
 
@@ -236,6 +248,9 @@ const profile = buildUserProfile(fakeExtract, {
   lng: 2.3522,
   hints: { crmSalonId: "crm-abc-123" },
   crmSourceUrl: "https://www.planity.com/stb-paris",
+  // Gallery URLs reach the profile via ctx (already re-hosted), not from the
+  // raw extract — buildUserProfile never reads `extract.salon.images`.
+  salonImages: ["https://cdn.example.com/a.jpg", "https://cdn.example.com/b.jpg"],
   now: fixedNow,
 });
 
@@ -250,9 +265,9 @@ check(
     profile.crmSourceUrl === "https://www.planity.com/stb-paris",
 );
 check(
-  "buildUserProfile: salon_images is a comma-joined string, not an array",
-  typeof profile.salon_images === "string" &&
-    profile.salon_images === "https://cdn.example.com/a.jpg,https://cdn.example.com/b.jpg",
+  "buildUserProfile: salon_images is an array (the app reads List<String>.from)",
+  Array.isArray(profile.salon_images) &&
+    deepEqual(profile.salon_images, ["https://cdn.example.com/a.jpg", "https://cdn.example.com/b.jpg"]),
 );
 check(
   "buildUserProfile: spLocation built from lat/lng",

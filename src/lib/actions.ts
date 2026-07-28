@@ -10,6 +10,8 @@ import { geocodeAddress } from "@/lib/geocode";
 import { uniqueSalonSlug } from "@/lib/slugs";
 import { EMAIL_TEMPLATES } from "@/lib/emailTemplates";
 import { defaultEmailFrom } from "@/lib/email";
+import { decrypt } from "@/lib/crypto";
+import { canRevealOnboardingPassword } from "@/lib/onboarding-access";
 import type { ActivityType, BookingTool, EmailTemplate, Metier, SalonStatus, SalonType } from "@/generated/prisma/enums";
 
 async function currentUser() {
@@ -320,4 +322,84 @@ export async function triggerOnboarding(salonId: string) {
   revalidatePath(`/salons/${salonId}`);
   revalidatePath("/salons");
   revalidatePath("/dashboard");
+}
+
+export type RevealPasswordResult = { ok: true; password: string } | { ok: false; error: string };
+
+/**
+ * Decrypts an onboarded account's password for one-off display in the CRM.
+ *
+ * The plaintext exists only in this action's return value — it is never part of
+ * the salon page's payload, so a password stays encrypted at rest and out of the
+ * HTML until someone deliberately asks for it. Every successful reveal writes an
+ * OnboardingJobEvent so there is a trail of who read which credential and when.
+ *
+ * Returns an envelope instead of throwing: Next.js redacts server-action errors
+ * in production, so a thrown message would reach the operator as a generic
+ * "an error occurred" with no way to tell "not your salon" from "key missing".
+ *
+ * Deliberately does NOT revalidatePath: re-rendering the salon page would wipe
+ * the revealed value out of the client component holding it.
+ */
+export async function revealOnboardingPassword(jobId: string): Promise<RevealPasswordResult> {
+  const user = await currentUser();
+  if (!canRevealOnboardingPassword(user)) return { ok: false, error: "Non authentifié" };
+
+  const job = await prisma.onboardingJob.findUnique({
+    where: { id: jobId },
+    select: { id: true, loginPassword: true },
+  });
+  if (!job) return { ok: false, error: "Job d'onboarding introuvable" };
+  if (!job.loginPassword) return { ok: false, error: "Aucun mot de passe enregistré pour ce job" };
+
+  let password: string;
+  try {
+    password = decrypt(job.loginPassword);
+  } catch {
+    // Wrong/rotated ENCRYPTION_KEY, or a row written before encryption landed.
+    // Never surface the ciphertext or the underlying crypto error to the UI.
+    return { ok: false, error: "Déchiffrement impossible — vérifie ENCRYPTION_KEY sur le serveur" };
+  }
+
+  try {
+    await auditPasswordReveal(jobId, user.id, user.email ?? null);
+
+  } catch {
+    // No trail, no credential.
+    return { ok: false, error: "Journalisation impossible — mot de passe non affiché" };
+  }
+
+  return { ok: true, password };
+}
+
+/**
+ * Appends a `password_revealed` event to the job's log. Sequences are unique
+ * per job, so two reveals racing for the same number is a real (if unlikely)
+ * outcome — retry on collision rather than failing a legitimate reveal.
+ *
+ * An audit write that fails must fail the reveal: silently handing out a
+ * credential with no trail is exactly what this event exists to prevent.
+ */
+async function auditPasswordReveal(jobId: string, userId: string, userEmail: string | null): Promise<void> {
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const agg = await prisma.onboardingJobEvent.aggregate({ where: { jobId }, _max: { sequence: true } });
+    try {
+      await prisma.onboardingJobEvent.create({
+        data: {
+          jobId,
+          sequence: (agg._max.sequence ?? 0) + 1,
+          stream: "system",
+          type: "password_revealed",
+          level: "info",
+          text: `Mot de passe révélé par ${userEmail ?? userId}`,
+          data: { userId, userEmail },
+        },
+      });
+      return;
+    } catch (error) {
+      const isSequenceCollision = (error as { code?: string } | undefined)?.code === "P2002";
+      if (!isSequenceCollision || attempt === MAX_ATTEMPTS) throw error;
+    }
+  }
 }

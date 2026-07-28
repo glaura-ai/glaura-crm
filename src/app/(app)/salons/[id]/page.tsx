@@ -3,10 +3,12 @@ import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { EmailFollowUpForm } from "@/components/EmailFollowUpForm";
+import { OnboardingPasswordReveal } from "@/components/OnboardingPasswordReveal";
 import { SalonEditModal } from "@/components/SalonEditModal";
 import { getSalon, getAssignableUsers } from "@/lib/salons";
 import { addReminder, changeStatus, completeReminder, logActivity, queueFollowUpEmail, setDailyPriority, triggerOnboarding, updateSalon } from "@/lib/actions";
 import { isDailyPriorityActive } from "@/lib/dailyPriority";
+import { canRevealOnboardingPassword } from "@/lib/onboarding-access";
 import {
   ACTIVITY_LABEL,
   BOOKING_LABEL,
@@ -65,6 +67,7 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
   const latestJob = salon.onboardingJobs[0];
   const onboardingBusy = latestJob?.status === "QUEUED" || latestJob?.status === "PROCESSING";
   const canTrigger = !!me && hasBookingUrl && !onboardingBusy && (isAdmin || salon.assignedToId === me.id) && (isAdmin || salon.status === "SIGNE");
+  const canRevealPassword = canRevealOnboardingPassword(me);
   const visibleActivities = salon.activities.filter((activity) => activity.type !== "EMAIL");
   const editSalon = {
     name: salon.name,
@@ -214,6 +217,9 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
                 </div>
                 <div className="mt-1 text-xs text-slate-500">{new Date(latestJob.updatedAt).toLocaleString("fr-FR")}</div>
                 {latestJob.loginEmail && <div className="mt-2 font-medium text-slate-700">{latestJob.loginEmail}</div>}
+                {/* Only the job id crosses to the client — the encrypted password
+                    stays server-side and is fetched on demand by the action. */}
+                {latestJob.loginPassword && canRevealPassword && <OnboardingPasswordReveal jobId={latestJob.id} />}
                 {latestJob.serviceCount != null && (
                   <div className="mt-1 text-xs font-medium text-slate-500">{latestJob.serviceCount} services · {latestJob.agentCount ?? 0} agents</div>
                 )}
