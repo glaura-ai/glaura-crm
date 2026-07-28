@@ -65,6 +65,11 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
   const priorityActive = isDailyPriorityActive(salon.priorityDate);
   const hasBookingUrl = !!salon.bookingUrl;
   const latestJob = salon.onboardingJobs[0];
+  // The credential lives on whichever job actually created the account, which is
+  // not always the newest one: re-running onboarding logs an ALREADY_ONBOARDED
+  // job with a null password. Same Firebase account either way, so show the most
+  // recent password there is rather than hiding it behind a later no-op run.
+  const credentialJob = salon.onboardingJobs.find((job) => job.loginPassword);
   const onboardingBusy = latestJob?.status === "QUEUED" || latestJob?.status === "PROCESSING";
   const canTrigger = !!me && hasBookingUrl && !onboardingBusy && (isAdmin || salon.assignedToId === me.id) && (isAdmin || salon.status === "SIGNE");
   const canRevealPassword = canRevealOnboardingPassword(me);
@@ -219,7 +224,7 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
                 {latestJob.loginEmail && <div className="mt-2 font-medium text-slate-700">{latestJob.loginEmail}</div>}
                 {/* Only the job id crosses to the client — the encrypted password
                     stays server-side and is fetched on demand by the action. */}
-                {latestJob.loginPassword && canRevealPassword && <OnboardingPasswordReveal jobId={latestJob.id} />}
+                {credentialJob && canRevealPassword && <OnboardingPasswordReveal jobId={credentialJob.id} />}
                 {latestJob.serviceCount != null && (
                   <div className="mt-1 text-xs font-medium text-slate-500">{latestJob.serviceCount} services · {latestJob.agentCount ?? 0} agents</div>
                 )}
