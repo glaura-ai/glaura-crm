@@ -24,6 +24,13 @@ x-crm-service: &crm-service
   restart: unless-stopped
   network_mode: host
   env_file: /opt/glaura/glaura-crm/.env.docker
+  volumes:
+    # GOOGLE_APPLICATION_CREDENTIALS in .env.docker points at this exact path,
+    # so the mount is mirrored host→container. Without it every Firebase call
+    # fails at auth — and it is not only the onboarding worker that makes them:
+    # web reads userProfile for the email preview and uploads template images to
+    # the media bucket, both of which failed silently before this was shared.
+    - /opt/glaura/secrets/firebase-adminsdk.json:/opt/glaura/secrets/firebase-adminsdk.json:ro
   logging:
     driver: json-file
     options:
@@ -57,11 +64,6 @@ services:
     # Playwright needs root to launch Chromium in this image.
     user: root
     command: ["npm", "run", "onboard:worker"]
-    volumes:
-      # GOOGLE_APPLICATION_CREDENTIALS in .env.docker points at this exact path,
-      # so the mount is mirrored host→container. Without it every Firebase
-      # account write fails at auth.
-      - /opt/glaura/secrets/firebase-adminsdk.json:/opt/glaura/secrets/firebase-adminsdk.json:ro
 
   email-worker:
     <<: *crm-service
