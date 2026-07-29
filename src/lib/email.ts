@@ -4,6 +4,7 @@ import {
   GLAURA_LOGO_FILENAME,
   GLAURA_LOGO_PNG_BASE64,
 } from "@/lib/email-assets/glaura-logo";
+import { inlineEmailImages } from "@/lib/email-inline-images";
 
 export type SendEmailInput = {
   to: string;
@@ -26,8 +27,8 @@ export function defaultEmailFrom() {
  * a new sender — a missing part renders as the same broken icon a blocked
  * remote image does.
  */
-function inlineAttachments(html?: string | null) {
-  if (!html?.includes(`cid:${GLAURA_LOGO_CID}`)) return undefined;
+function logoAttachment(html: string) {
+  if (!html.includes(`cid:${GLAURA_LOGO_CID}`)) return [];
   return [
     {
       filename: GLAURA_LOGO_FILENAME,
@@ -37,6 +38,20 @@ function inlineAttachments(html?: string | null) {
       contentDisposition: "inline" as const,
     },
   ];
+}
+
+/**
+ * Every image the message can carry itself, carried: the logo, plus whatever
+ * `inlineEmailImages` could resolve out of the body. Templates are pasted by
+ * operators, so this is the difference between "the images happen to render"
+ * and "the images render".
+ */
+async function buildBody(html?: string | null) {
+  if (!html) return { html: undefined, attachments: undefined };
+
+  const inlined = await inlineEmailImages(html);
+  const attachments = [...logoAttachment(inlined.html), ...inlined.attachments];
+  return { html: inlined.html, attachments: attachments.length ? attachments : undefined };
 }
 
 export async function sendEmail({ to, subject, text, html, replyTo }: SendEmailInput) {
@@ -65,13 +80,15 @@ export async function sendEmail({ to, subject, text, html, replyTo }: SendEmailI
     socketTimeout: 20_000,
   });
 
+  const body = await buildBody(html);
+
   await transporter.sendMail({
     from: defaultEmailFrom(),
     to,
     subject,
     text,
-    html: html || undefined,
+    html: body.html,
     replyTo: replyTo || undefined,
-    attachments: inlineAttachments(html),
+    attachments: body.attachments,
   });
 }
