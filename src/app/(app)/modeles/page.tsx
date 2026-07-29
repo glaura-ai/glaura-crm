@@ -69,7 +69,7 @@ export default async function EmailTemplatesPage({
           </div>
           <EmailTemplateForm
             action={updateEmailTemplate.bind(null, editing.id)}
-            template={{ label: editing.label, subject: editing.subject, body: editing.body }}
+            template={{ label: editing.label, subject: editing.subject, body: editing.body, format: editing.format }}
             submitLabel="Enregistrer"
           />
         </div>
@@ -85,6 +85,9 @@ export default async function EmailTemplatesPage({
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-slate-900">{template.label}</span>
+                  {template.format === "HTML" && (
+                    <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700 ring-1 ring-violet-200">HTML</span>
+                  )}
                   {template.archivedAt && (
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">Archivé</span>
                   )}

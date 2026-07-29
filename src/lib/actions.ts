@@ -11,6 +11,8 @@ import { uniqueEmailTemplateKey, uniqueSalonSlug } from "@/lib/slugs";
 import { defaultEmailFrom } from "@/lib/email";
 import { decrypt } from "@/lib/crypto";
 import { canRevealOnboardingPassword } from "@/lib/onboarding-access";
+import { decryptJobPassword, fetchCompanyUserName, findCredentialJob } from "@/lib/onboarding/salon-credentials";
+import { renderWelcomeEmail } from "@/lib/onboarding/welcome-email";
 import type { ActivityType, BookingTool, Metier, SalonStatus, SalonType } from "@/generated/prisma/enums";
 
 async function currentUser() {
@@ -256,25 +258,35 @@ const emailJobSchema = z.object({
   to: z.email(),
   templateId: z.string().trim().min(1),
   subject: z.string().trim().min(2).max(160),
-  body: z.string().trim().min(10).max(6000),
+  // Plaintext only: the operator edits the body of a TEXT template in the
+  // composer. HTML bodies are rendered server-side from the stored template
+  // (see renderHtmlEmailBody) and never travel through the form.
+  body: z.string().trim().min(10).max(6000).optional(),
 });
 
 export async function queueFollowUpEmail(salonId: string, fd: FormData) {
   const me = await assertCanAccessSalon(salonId);
+  const rawBody = (fd.get("body") || "").toString();
   const payload = emailJobSchema.parse({
     to: (fd.get("to") || "").toString().trim(),
     templateId: (fd.get("templateId") || "").toString(),
     subject: (fd.get("subject") || "").toString(),
-    body: (fd.get("body") || "").toString(),
+    body: rawBody.trim() ? rawBody : undefined,
   });
 
   // Snapshot the key rather than trusting the client for it, so the job's
   // provenance can't be spoofed and survives a later rename of the template.
   const template = await prisma.emailTemplate.findUnique({
     where: { id: payload.templateId },
-    select: { id: true, key: true },
+    select: { id: true, key: true, format: true, body: true },
   });
   if (!template) throw new Error("Modèle d'email introuvable");
+
+  const isHtml = template.format === "HTML";
+  const rendered = isHtml
+    ? await renderHtmlEmailBody(salonId, template.body, payload.subject, payload.to, me)
+    : null;
+  if (!isHtml && !payload.body) throw new Error("Le message est vide");
 
   await prisma.emailJob.create({
     data: {
@@ -285,7 +297,9 @@ export async function queueFollowUpEmail(salonId: string, fd: FormData) {
       templateId: template.id,
       templateKey: template.key,
       subject: payload.subject,
-      body: payload.body,
+      format: template.format,
+      body: rendered ? rendered.html : payload.body!,
+      bodyText: rendered ? rendered.text : null,
       status: "QUEUED",
     },
   });
@@ -296,6 +310,50 @@ export async function queueFollowUpEmail(salonId: string, fd: FormData) {
   revalidatePath("/dashboard");
 }
 
+/**
+ * Renders an HTML template (« Compte prêt ») for one salon, server-side.
+ *
+ * The credentials never reach the browser: the composer previews a masked
+ * password, and the real one is decrypted here, at send time, and audited on
+ * the very job it belongs to — putting a credential in an outgoing email
+ * deserves the same trail as revealing it on screen.
+ */
+async function renderHtmlEmailBody(
+  salonId: string,
+  templateBody: string,
+  subject: string,
+  recipient: string,
+  user: { id: string; email?: string | null },
+) {
+  if (!canRevealOnboardingPassword(user)) throw new Error("Non authentifié");
+
+  const salon = await prisma.salon.findUnique({ where: { id: salonId }, select: { name: true } });
+  if (!salon) throw new Error("Salon introuvable");
+
+  const account = await findCredentialJob(salonId);
+  if (!account) {
+    throw new Error("Ce salon n'a pas encore de compte onboardé — aucun identifiant à envoyer.");
+  }
+
+  const password = await decryptJobPassword(account.jobId);
+  // No trail, no credential — same rule as revealOnboardingPassword.
+  await auditPasswordReveal(account.jobId, user.id, user.email ?? null, {
+    text: `Identifiants envoyés par email à ${recipient} par ${user.email ?? user.id}`,
+  });
+
+  const companyUserName = await fetchCompanyUserName(account.accountUid);
+  const { html, text } = renderWelcomeEmail(
+    {
+      email: account.loginEmail ?? recipient,
+      password,
+      companyUserName,
+      salonName: salon.name,
+    },
+    { subject, body: templateBody, source: "database" },
+  );
+  return { html, text };
+}
+
 // ── Email templates ──────────────────────────────────────────────
 // Shared, org-wide sales copy edited from /modeles. Any signed-in user may
 // change them, so every write is attributed and edits take effect immediately
@@ -304,13 +362,17 @@ export async function queueFollowUpEmail(salonId: string, fd: FormData) {
 const emailTemplateSchema = z.object({
   label: z.string().trim().min(2).max(60),
   subject: z.string().trim().min(2).max(160),
-  body: z.string().trim().min(10).max(6000),
+  format: z.enum(["TEXT", "HTML"]),
+  // An HTML email is a full document: welcome-salon.html alone is ~35 KB, so the
+  // plaintext cap would reject the very template this format exists for.
+  body: z.string().trim().min(10).max(200_000),
 });
 
 function parseTemplateForm(fd: FormData) {
   return emailTemplateSchema.parse({
     label: (fd.get("label") || "").toString(),
     subject: (fd.get("subject") || "").toString(),
+    format: (fd.get("format") || "TEXT").toString(),
     body: (fd.get("body") || "").toString(),
   });
 }
@@ -328,6 +390,7 @@ export async function createEmailTemplate(fd: FormData) {
       key: await uniqueEmailTemplateKey(payload.label),
       label: payload.label,
       subject: payload.subject,
+      format: payload.format,
       body: payload.body,
       sortOrder: (last._max.sortOrder ?? 0) + 1,
       createdById: user.id,
@@ -344,7 +407,7 @@ export async function updateEmailTemplate(id: string, fd: FormData) {
   // `key` is deliberately not updated — EmailJob rows snapshot it.
   await prisma.emailTemplate.update({
     where: { id },
-    data: { label: payload.label, subject: payload.subject, body: payload.body },
+    data: { label: payload.label, subject: payload.subject, format: payload.format, body: payload.body },
   });
 
   revalidatePath("/modeles");
@@ -459,7 +522,15 @@ export async function revealOnboardingPassword(jobId: string): Promise<RevealPas
  * An audit write that fails must fail the reveal: silently handing out a
  * credential with no trail is exactly what this event exists to prevent.
  */
-async function auditPasswordReveal(jobId: string, userId: string, userEmail: string | null): Promise<void> {
+async function auditPasswordReveal(
+  jobId: string,
+  userId: string,
+  userEmail: string | null,
+  // Emailing the credential is the same event with a different story: keeping
+  // the type identical means one query still finds every time a password left
+  // the CRM, however it left.
+  options: { text?: string } = {},
+): Promise<void> {
   const MAX_ATTEMPTS = 3;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const agg = await prisma.onboardingJobEvent.aggregate({ where: { jobId }, _max: { sequence: true } });
@@ -471,7 +542,7 @@ async function auditPasswordReveal(jobId: string, userId: string, userEmail: str
           stream: "system",
           type: "password_revealed",
           level: "info",
-          text: `Mot de passe révélé par ${userEmail ?? userId}`,
+          text: options.text ?? `Mot de passe révélé par ${userEmail ?? userId}`,
           data: { userId, userEmail },
         },
       });

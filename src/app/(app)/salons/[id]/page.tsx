@@ -10,6 +10,7 @@ import { prisma } from "@/lib/db";
 import { addReminder, changeStatus, completeReminder, logActivity, queueFollowUpEmail, setDailyPriority, triggerOnboarding, updateSalon } from "@/lib/actions";
 import { isDailyPriorityActive } from "@/lib/dailyPriority";
 import { canRevealOnboardingPassword } from "@/lib/onboarding-access";
+import { onboardingPreviewValues } from "@/lib/onboarding/salon-credentials";
 import {
   ACTIVITY_LABEL,
   BOOKING_LABEL,
@@ -65,7 +66,7 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
     prisma.emailTemplate.findMany({
       where: { archivedAt: null },
       orderBy: { sortOrder: "asc" },
-      select: { id: true, label: true, subject: true, body: true },
+      select: { id: true, label: true, subject: true, body: true, format: true },
     }),
   ]);
   if (!salon) notFound();
@@ -78,6 +79,11 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
   // job with a null password. Same Firebase account either way, so show the most
   // recent password there is rather than hiding it behind a later no-op run.
   const credentialJob = salon.onboardingJobs.find((job) => job.loginPassword);
+  // Only resolved when an HTML template could actually be picked — it costs a
+  // Firestore read for the public page slug, which no other section needs.
+  const onboardingValues = emailTemplates.some((template) => template.format === "HTML")
+    ? await onboardingPreviewValues(id, salon.name)
+    : null;
   const onboardingBusy = latestJob?.status === "QUEUED" || latestJob?.status === "PROCESSING";
   const canTrigger = !!me && hasBookingUrl && !onboardingBusy && (isAdmin || salon.assignedToId === me.id) && (isAdmin || salon.status === "SIGNE");
   const canRevealPassword = canRevealOnboardingPassword(me);
@@ -310,6 +316,7 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
                 bookingUrl: salon.bookingUrl,
               }}
               templates={emailTemplates}
+              onboardingValues={onboardingValues}
             />
             {salon.emailJobs.length > 0 && (
               <ul className="mt-4 space-y-2">

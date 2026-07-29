@@ -333,7 +333,12 @@ model EmailJob {
   templateId  String?
   template    EmailTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   subject  String
+  // `body` is what gets sent as the main part: plaintext for TEXT jobs, the
+  // rendered markup for HTML ones. `bodyText` carries the plaintext alternative
+  // of an HTML job so the message is never HTML-only.
+  format   EmailFormat  @default(TEXT)
   body     String       @db.Text
+  bodyText String?      @db.Text
   status   EmailJobStatus @default(QUEUED)
   attempts Int          @default(0)
   lastError String?     @db.Text
@@ -346,9 +351,19 @@ model EmailJob {
   @@index([salonId, createdAt])
 }
 
+// Plaintext sales copy vs. a full HTML email (the onboarding « Compte prêt »
+// template). The format decides how src/lib/emailTemplates.ts renders a body —
+// HTML never drops a line and escapes what it interpolates — and how the worker
+// hands it to nodemailer.
+enum EmailFormat {
+  TEXT
+  HTML
+}
+
 // Follow-up email templates, editable from /modeles by any signed-in user.
 // Bodies use the `{{salon}}` / `{{contact}}` / `{{bookingUrl}}` placeholders
-// rendered by src/lib/emailTemplates.ts.
+// rendered by src/lib/emailTemplates.ts, plus the onboarding placeholders
+// (`{{email_salon}}`, `{{mot_de_passe}}`, …) on HTML templates.
 model EmailTemplate {
   id    String @id @default(cuid())
   // Slug derived from the label on creation and never changed afterwards, so
@@ -357,6 +372,7 @@ model EmailTemplate {
   label String
 
   subject String
+  format  EmailFormat @default(TEXT)
   body    String @db.Text
 
   sortOrder Int @default(0)

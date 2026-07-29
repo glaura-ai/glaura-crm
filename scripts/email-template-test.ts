@@ -12,8 +12,10 @@
 
 import {
   TEMPLATE_VARIABLES,
+  onboardingValues,
   renderTemplate,
   unknownVariables,
+  variablesForFormat,
   type EmailSalonDraftInput,
 } from "../src/lib/emailTemplates";
 
@@ -130,13 +132,72 @@ check("unknownVariables returns nothing for a clean template", unknownVariables(
 check("unknownVariables de-duplicates", unknownVariables("{{x}} {{x}}").length === 1);
 check("unknownVariables handles a template with no tokens at all", unknownVariables("Bonjour").length === 0);
 
+// An onboarding token in a plaintext relance has nothing to fill it, so the
+// editor must flag it rather than let a rep email a literal {{mot_de_passe}}.
+check("an onboarding token is unknown in a TEXT template", unknownVariables("{{mot_de_passe}}", "TEXT").length === 1);
+check("an onboarding token is known in an HTML template", unknownVariables("{{mot_de_passe}}", "HTML").length === 0);
+
 // Guards against the editor legend and the renderer drifting apart: every token
 // advertised to authors must be one the renderer actually substitutes.
 check(
-  "every advertised variable is recognised by the renderer",
-  TEMPLATE_VARIABLES.every((variable) => unknownVariables(variable.token).length === 0),
+  "every advertised variable is recognised in its own format",
+  TEMPLATE_VARIABLES.every((variable) => unknownVariables(variable.token, "HTML").length === 0) &&
+    variablesForFormat("TEXT").every((variable) => unknownVariables(variable.token, "TEXT").length === 0),
 );
 check("TEMPLATE_VARIABLES is non-empty and each entry has a label", TEMPLATE_VARIABLES.length > 0 && TEMPLATE_VARIABLES.every((v) => !!v.label));
+check(
+  "TEXT only advertises the salon variables",
+  variablesForFormat("TEXT").every((variable) => variable.scope === "salon") &&
+    variablesForFormat("HTML").length > variablesForFormat("TEXT").length,
+);
+
+// ---------------------------------------------------------------------------
+// HTML format
+//
+// Markup is not line-oriented: dropping a "line" would delete a table row or an
+// unclosed tag, and an unescaped value would break out of an href="…".
+// ---------------------------------------------------------------------------
+
+const account = onboardingValues({
+  loginEmail: "contact@bkmlab.fr",
+  password: "Gl4ura!x",
+  pageUrl: "https://bkmlab.glaura.ai",
+  portalUrl: "https://pro.glaura.ai",
+  siteUrl: "https://glaura.ai",
+  instagramUrl: "https://www.instagram.com/glaura.app/",
+  supportEmail: "support@glaura.fr",
+});
+const html = { format: "HTML" as const, values: account };
+
+eq(
+  "HTML fills the onboarding placeholders",
+  renderTemplate('<a href="{{lien_espace}}">{{email_salon}} / {{mot_de_passe}}</a>', salon, html),
+  '<a href="https://pro.glaura.ai">contact@bkmlab.fr / Gl4ura!x</a>',
+);
+eq(
+  "HTML never drops a line, even when a variable is empty",
+  renderTemplate("<tr>\n<td>{{bookingUrl}}</td>\n</tr>", bare, html),
+  "<tr>\n<td></td>\n</tr>",
+);
+eq(
+  "HTML escapes interpolated values",
+  renderTemplate("<td>{{salon}}</td>", { ...bare, name: 'A & B <script>"x"' }, html),
+  "<td>A &amp; B &lt;script&gt;&quot;x&quot;</td>",
+);
+eq(
+  "HTML leaves an unknown token literal too",
+  renderTemplate("<td>{{prenom}}</td>", salon, html),
+  "<td>{{prenom}}</td>",
+);
+eq(
+  "TEXT does not escape — a plaintext relance is not markup",
+  renderTemplate("{{salon}}", { ...bare, name: "A & B" }),
+  "A & B",
+);
+check(
+  "onboardingValues maps the page URL onto both link tokens",
+  account["{{lien_page}}"] === "https://bkmlab.glaura.ai" && account["{{lien_rdv}}"] === "https://bkmlab.glaura.ai",
+);
 
 console.log("");
 if (failures > 0) {

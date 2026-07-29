@@ -29,10 +29,15 @@ async function processJob(prisma: Prisma, sendEmail: SendEmail, id: string) {
   if (!job) return;
 
   try {
+    // HTML jobs store the markup in `body` and its plaintext alternative in
+    // `bodyText`; TEXT jobs are plaintext all the way down. Never send an
+    // HTML-only message — spam filters and text-only clients both punish it.
+    const isHtml = job.format === "HTML";
     await sendEmail({
       to: job.to,
       subject: job.subject,
-      text: job.body,
+      text: isHtml ? job.bodyText || stripHtml(job.body) : job.body,
+      html: isHtml ? job.body : null,
       replyTo: job.requestedBy?.email,
     });
 
@@ -50,6 +55,26 @@ async function processJob(prisma: Prisma, sendEmail: SendEmail, id: string) {
     });
     console.error(`failed ${job.id}: ${message}`);
   }
+}
+
+/**
+ * Last-resort plaintext part for an HTML job queued without one (a row from
+ * before `bodyText` existed). Crude on purpose — the queue path writes a proper
+ * plaintext alternative, this only guarantees the message is never HTML-only.
+ */
+function stripHtml(html: string): string {
+  return html
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n\s*\n\s*\n+/g, "\n\n")
+    .trim();
 }
 
 async function processBatch(prisma: Prisma, sendEmail: SendEmail) {
