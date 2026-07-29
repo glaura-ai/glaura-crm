@@ -11,6 +11,7 @@ import { uniqueEmailTemplateKey, uniqueSalonSlug } from "@/lib/slugs";
 import { defaultEmailFrom } from "@/lib/email";
 import { decrypt } from "@/lib/crypto";
 import { canRevealOnboardingPassword } from "@/lib/onboarding-access";
+import { storeEmailImage } from "@/lib/email-assets/store";
 import { decryptJobPassword, fetchCompanyUserName, findCredentialJob } from "@/lib/onboarding/salon-credentials";
 import { renderWelcomeEmail } from "@/lib/onboarding/welcome-email";
 import type { ActivityType, BookingTool, Metier, SalonStatus, SalonType } from "@/generated/prisma/enums";
@@ -375,6 +376,29 @@ function parseTemplateForm(fd: FormData) {
     format: (fd.get("format") || "TEXT").toString(),
     body: (fd.get("body") || "").toString(),
   });
+}
+
+export type UploadEmailImageResult = { ok: true; url: string } | { ok: false; error: string };
+
+/**
+ * Hosts an image for use in an HTML template and hands back its URL.
+ *
+ * An envelope rather than a throw: Next redacts server-action errors in
+ * production, and "Format non supporté" is precisely the kind of message the
+ * author needs to read. Open to any signed-in user, like editing a template.
+ */
+export async function uploadEmailImage(fd: FormData): Promise<UploadEmailImageResult> {
+  await requireCurrentUser();
+
+  const file = fd.get("file");
+  if (!file || typeof file === "string") return { ok: false, error: "Aucun fichier" };
+
+  try {
+    const { url } = await storeEmailImage(file, Date.now());
+    return { ok: true, url };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Envoi impossible" };
+  }
 }
 
 export async function createEmailTemplate(fd: FormData) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, useTransition } from "react";
 import {
   onboardingValues,
   renderTemplate,
@@ -8,6 +8,8 @@ import {
   variablesForFormat,
   type EmailFormat,
 } from "@/lib/emailTemplates";
+import { ACCEPTED_IMAGE_TYPES, imageWarnings } from "@/lib/emailImages";
+import { uploadEmailImage } from "@/lib/actions";
 import { EmailHtmlPreview } from "@/components/EmailHtmlPreview";
 import { SubmitButton } from "@/components/SubmitButton";
 
@@ -46,12 +48,41 @@ export function EmailTemplateForm({ action, template, submitLabel }: Props) {
   const [subject, setSubject] = useState(template?.subject ?? "");
   const [body, setBody] = useState(template?.body ?? "");
   const [format, setFormat] = useState<EmailFormat>(template?.format ?? "TEXT");
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploading, startUpload] = useTransition();
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
   const isHtml = format === "HTML";
 
   // Typos are warned about, never blocked — an unknown token renders literally,
   // which is recoverable, and a hard block would be maddening mid-edit.
   const unknown = Array.from(new Set([...unknownVariables(subject, format), ...unknownVariables(body, format)]));
   const options = { format, values: isHtml ? SAMPLE_ONBOARDING : undefined };
+  // Only HTML bodies carry images; a plaintext relance with an <img> in it is
+  // not a case worth warning about.
+  const brokenImages = isHtml ? imageWarnings(body) : [];
+
+  /**
+   * Uploads the picked file and drops an `<img>` for it at the caret. Inserting
+   * the tag rather than just showing the URL is the point: an author working in
+   * raw HTML should not have to hand-write the markup to see the image appear
+   * in the preview.
+   */
+  function handleUpload(file: File) {
+    setUploadError(null);
+    startUpload(async () => {
+      const payload = new FormData();
+      payload.set("file", file);
+      const result = await uploadEmailImage(payload);
+      if (!result.ok) {
+        setUploadError(result.error);
+        return;
+      }
+      const tag = `<img src="${result.url}" alt="" width="200" style="display:block; width:200px; max-width:100%; height:auto; border:0;">`;
+      const textarea = bodyRef.current;
+      const caret = textarea?.selectionStart ?? body.length;
+      setBody((current) => `${current.slice(0, caret)}${tag}${current.slice(caret)}`);
+    });
+  }
 
   return (
     <form action={action} className="grid gap-4 md:grid-cols-2">
@@ -93,10 +124,30 @@ export function EmailTemplateForm({ action, template, submitLabel }: Props) {
           />
         </div>
         <div>
-          <label className={label} htmlFor="body">Corps</label>
+          <div className="flex items-end justify-between">
+            <label className={label} htmlFor="body">Corps</label>
+            {isHtml && (
+              <label className="mb-1 cursor-pointer text-xs font-semibold text-rose-600 hover:underline">
+                {uploading ? "Envoi…" : "+ Héberger une image"}
+                <input
+                  type="file"
+                  accept={ACCEPTED_IMAGE_TYPES.join(",")}
+                  className="hidden"
+                  disabled={uploading}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    // Reset so picking the same file twice fires onChange again.
+                    event.target.value = "";
+                    if (file) handleUpload(file);
+                  }}
+                />
+              </label>
+            )}
+          </div>
           <textarea
             id="body"
             name="body"
+            ref={bodyRef}
             value={body}
             onChange={(event) => setBody(event.target.value)}
             rows={isHtml ? 18 : 12}
@@ -131,6 +182,24 @@ export function EmailTemplateForm({ action, template, submitLabel }: Props) {
           <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800 ring-1 ring-amber-200">
             Variable inconnue : {unknown.join(", ")} — elle sera envoyée telle quelle.
           </p>
+        )}
+
+        {uploadError && (
+          <p className="rounded-lg bg-rose-50 p-3 text-xs text-rose-800 ring-1 ring-rose-200">{uploadError}</p>
+        )}
+
+        {brokenImages.length > 0 && (
+          <div className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800 ring-1 ring-amber-200">
+            <p className="font-semibold">Images qui ne s&apos;afficheront pas</p>
+            <ul className="mt-1 space-y-1">
+              {brokenImages.map((warning) => (
+                <li key={warning.src}>
+                  <code className="font-mono text-[11px]">{warning.src.slice(0, 60)}{warning.src.length > 60 ? "…" : ""}</code>
+                  <span className="text-amber-700"> — {warning.message}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         <div className="rounded-lg border border-slate-200 bg-white p-3">
