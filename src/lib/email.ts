@@ -1,4 +1,9 @@
 import nodemailer from "nodemailer";
+import {
+  GLAURA_LOGO_CID,
+  GLAURA_LOGO_FILENAME,
+  GLAURA_LOGO_PNG_BASE64,
+} from "@/lib/email-assets/glaura-logo";
 
 export type SendEmailInput = {
   to: string;
@@ -11,6 +16,27 @@ export type SendEmailInput = {
 
 export function defaultEmailFrom() {
   return process.env.SMTP_FROM || "Glaura <support@glaura.fr>";
+}
+
+/**
+ * Ships the logo as an inline part whenever the markup points at it.
+ *
+ * Done here rather than at each call site so the invariant "an HTML body that
+ * references `cid:glaura-logo` always carries that part" cannot be forgotten by
+ * a new sender — a missing part renders as the same broken icon a blocked
+ * remote image does.
+ */
+function inlineAttachments(html?: string | null) {
+  if (!html?.includes(`cid:${GLAURA_LOGO_CID}`)) return undefined;
+  return [
+    {
+      filename: GLAURA_LOGO_FILENAME,
+      content: Buffer.from(GLAURA_LOGO_PNG_BASE64, "base64"),
+      contentType: "image/png",
+      cid: GLAURA_LOGO_CID,
+      contentDisposition: "inline" as const,
+    },
+  ];
 }
 
 export async function sendEmail({ to, subject, text, html, replyTo }: SendEmailInput) {
@@ -46,5 +72,6 @@ export async function sendEmail({ to, subject, text, html, replyTo }: SendEmailI
     text,
     html: html || undefined,
     replyTo: replyTo || undefined,
+    attachments: inlineAttachments(html),
   });
 }

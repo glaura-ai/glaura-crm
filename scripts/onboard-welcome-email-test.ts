@@ -6,7 +6,12 @@
  * Usage: npx tsx scripts/onboard-welcome-email-test.ts
  */
 
-import { shouldSendWelcomeEmail, renderWelcomeEmail } from "../src/lib/onboarding/welcome-email";
+import {
+  bundledWelcomeTemplate,
+  shouldSendWelcomeEmail,
+  renderWelcomeEmail,
+} from "../src/lib/onboarding/welcome-email";
+import { GLAURA_LOGO_CID, GLAURA_LOGO_PNG_BASE64 } from "../src/lib/email-assets/glaura-logo";
 
 let failures = 0;
 function check(label: string, cond: boolean, detail?: string): void {
@@ -84,6 +89,49 @@ check("malformed slug is escaped (no attribute breakout)",
 const noSlug = renderWelcomeEmail({ email: "x@example.com", password: "pw", companyUserName: "", salonName: "" });
 check("no slug → page url is the bare base (no trailing slash)",
   noSlug.html.includes("https://glaura.ai") && !noSlug.html.includes("https://glaura.ai//"));
+
+// ---------------------------------------------------------------------------
+// 3. The logo travels with the message
+//
+// A remote <img> is a fetch the client may refuse — which is how salons ended
+// up looking at a broken image. src/lib/email.ts attaches the inline part
+// whenever the markup references this cid, so the reference must survive.
+// ---------------------------------------------------------------------------
+
+check("both logos reference the inline cid", rendered.html.split(`cid:${GLAURA_LOGO_CID}`).length - 1 === 2);
+check("no remote image URL is left in the template", !/<img[^>]+src="https?:/i.test(rendered.html));
+
+// The part is only worth attaching if it is a real PNG: a truncated or
+// re-encoded constant would render as the same broken icon it replaces.
+const logo = Buffer.from(GLAURA_LOGO_PNG_BASE64, "base64");
+check(
+  "the inlined asset decodes to a PNG of a sane size",
+  logo.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) &&
+    logo.length > 1000 &&
+    logo.length < 30_000,
+  `${logo.length} bytes`,
+);
+
+// ---------------------------------------------------------------------------
+// 4. Template source
+//
+// The live body comes from the WELCOME_SALON row in the database (loaded by
+// loadWelcomeTemplate, which needs a connection and is therefore exercised on a
+// real environment, not here). What is pinned here: the bundled file is a valid
+// fallback, and an arbitrary template — i.e. an edited row — is what actually
+// gets rendered when one is passed.
+// ---------------------------------------------------------------------------
+
+const bundled = bundledWelcomeTemplate();
+check("bundled template is the file, with a subject", bundled.source === "file" && bundled.body.length > 1000 && bundled.subject.length > 0);
+
+const edited = renderWelcomeEmail(
+  { email: "x@example.com", password: "pw", companyUserName: "studio-d", salonName: "Studio D" },
+  { subject: "Objet édité", body: "<p>{{email_salon}} — {{mot_de_passe}}</p>", source: "database" },
+);
+check("an edited template body is what gets rendered", edited.html === "<p>x@example.com — pw</p>");
+check("an edited subject is used", edited.subject === "Objet édité");
+check("the plaintext part is built independently of the body", edited.text.includes("Mot de passe : pw"));
 
 // ---------------------------------------------------------------------------
 

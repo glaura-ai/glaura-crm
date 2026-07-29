@@ -9,21 +9,32 @@
  * override (P6 full onboarding), which is exactly when we want to hand the
  * salon their credentials + next steps.
  *
- * The three exports separate pure logic (testable without SMTP) from the
- * impure orchestrator:
+ * The markup is the `WELCOME_SALON` row of `EmailTemplate`, editable from
+ * /modeles, with the bundled `templates/welcome-salon.html` as the fallback so a
+ * missing, archived or unreachable row can never stop an onboarding email.
+ *
+ * The exports separate pure logic (testable without SMTP or a database) from
+ * the impure orchestrator:
  *   - `shouldSendWelcomeEmail` — the gate (pure).
+ *   - `bundledWelcomeTemplate` — the file fallback (pure).
+ *   - `loadWelcomeTemplate`    — database row, else the file.
  *   - `renderWelcomeEmail`     — template substitution (pure).
- *   - `maybeSendWelcomeEmail`  — gate → render → send; never throws.
+ *   - `maybeSendWelcomeEmail`  — gate → load → render → send; never throws.
  */
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { prisma } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
+import { onboardingValues, renderTemplate } from "@/lib/emailTemplates";
 import { GLAURA_EMAIL_DOMAIN } from "./account-model";
 
 // Derived from the single source of truth in account-model so the gate always
 // matches the placeholder domain the pipeline actually mints logins under.
 const INTERNAL_EMAIL_DOMAIN = `@${GLAURA_EMAIL_DOMAIN}`;
+
+/** The `EmailTemplate.key` this email renders. Also used by the seed script. */
+export const WELCOME_SALON_TEMPLATE_KEY = "WELCOME_SALON";
 
 /** All URLs/support address are env-overridable; the defaults are the live prod values. */
 function config() {
@@ -37,25 +48,39 @@ function config() {
   };
 }
 
-// Template is loaded lazily on first render and cached — keeps this module
+export type WelcomeTemplate = { subject: string; body: string; source: "database" | "file" };
+
+// The file is read lazily on first use and cached — keeps this module
 // import-safe (no disk I/O just to import it) and avoids re-reading per send.
-let templateCache: string | null = null;
-function loadTemplate(): string {
-  if (templateCache == null) {
+let fileBodyCache: string | null = null;
+
+/** The template shipped with the image: the fallback, and the seed source. */
+export function bundledWelcomeTemplate(): WelcomeTemplate {
+  if (fileBodyCache == null) {
     const path = fileURLToPath(new URL("./templates/welcome-salon.html", import.meta.url));
-    templateCache = readFileSync(path, "utf8");
+    fileBodyCache = readFileSync(path, "utf8");
   }
-  return templateCache;
+  return { subject: config().subject, body: fileBodyCache, source: "file" };
 }
 
-/** Minimal HTML entity escaping for values interpolated into the email markup. */
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+/**
+ * The active `WELCOME_SALON` row, else the bundled file.
+ *
+ * Read per send rather than cached: sends are rare, and an edit in /modeles
+ * should reach the very next salon rather than wait for a worker restart.
+ */
+export async function loadWelcomeTemplate(): Promise<WelcomeTemplate> {
+  try {
+    const row = await prisma.emailTemplate.findFirst({
+      where: { key: WELCOME_SALON_TEMPLATE_KEY, archivedAt: null },
+      select: { subject: true, body: true },
+    });
+    if (row?.body.trim()) return { subject: row.subject, body: row.body, source: "database" };
+  } catch {
+    // Database unreachable/migration pending — the onboarding email matters more
+    // than editability, so fall through to the copy inside the image.
+  }
+  return bundledWelcomeTemplate();
 }
 
 export type WelcomeEmailVars = {
@@ -84,39 +109,41 @@ export function shouldSendWelcomeEmail(email: string | null | undefined, passwor
 
 export type RenderedEmail = { subject: string; html: string; text: string };
 
-/**
- * Substitutes every `{{placeholder}}` in the template. Dynamic user values
- * (email/password/salon name) are HTML-escaped; the URLs come from trusted
- * config. Pure — no I/O beyond the cached template read.
- */
-export function renderWelcomeEmail(vars: WelcomeEmailVars): RenderedEmail {
+/** Public salon page for a slug — `{companyUserName}.glaura.ai`, else the site. */
+export function salonPageUrl(companyUserName?: string | null): string {
   const cfg = config();
-  const slug = (vars.companyUserName ?? "").trim();
-  // Public salon page is served at the subdomain `{companyUserName}.glaura.ai`.
-  // Raw URL for the plaintext part; HTML-escaped for the `href="..."` context
-  // (the slug is the only untrusted segment — the caller slugifies it today,
-  // but the renderer must not depend on that).
+  const slug = (companyUserName ?? "").trim();
   const publicDomain = cfg.publicBaseUrl.replace(/^https?:\/\//, "");
-  const pageUrl = slug ? `https://${slug}.${publicDomain}` : cfg.publicBaseUrl;
-  const pageUrlHtml = escapeHtml(pageUrl);
+  return slug ? `https://${slug}.${publicDomain}` : cfg.publicBaseUrl;
+}
 
-  const replacements: Record<string, string> = {
-    email_salon: escapeHtml(vars.email),
-    mot_de_passe: escapeHtml(vars.password),
-    lien_espace: cfg.proPortalUrl,
-    lien_page: pageUrlHtml,
-    lien_rdv: pageUrlHtml,
-    lien_site: cfg.siteUrl,
-    lien_instagram: cfg.instagramUrl,
-    email_support: cfg.supportEmail,
-  };
+/** The `{{…}}` values this email resolves — shared with the /modeles preview. */
+export function welcomeEmailValues(vars: WelcomeEmailVars): Record<string, string> {
+  const cfg = config();
+  return onboardingValues({
+    loginEmail: vars.email,
+    password: vars.password,
+    pageUrl: salonPageUrl(vars.companyUserName),
+    portalUrl: cfg.proPortalUrl,
+    siteUrl: cfg.siteUrl,
+    instagramUrl: cfg.instagramUrl,
+    supportEmail: cfg.supportEmail,
+  });
+}
 
-  const html = loadTemplate().replace(/\{\{\s*(\w+)\s*\}\}/g, (match, key: string) =>
-    key in replacements ? replacements[key] : match,
-  );
+/**
+ * Substitutes every `{{placeholder}}` in the template. Values are HTML-escaped
+ * by the shared renderer, which also leaves unknown tokens alone. Pure — the
+ * caller decides whether the template came from the database or the file.
+ */
+export function renderWelcomeEmail(vars: WelcomeEmailVars, template: WelcomeTemplate = bundledWelcomeTemplate()): RenderedEmail {
+  const values = welcomeEmailValues(vars);
+  const salon = { name: vars.salonName ?? "", contactName: null, bookingUrl: null };
+  const html = renderTemplate(template.body, salon, { format: "HTML", values });
 
   const salonName = (vars.salonName ?? "").trim();
   const greeting = salonName ? `Bonjour ${salonName},` : "Bonjour,";
+  const cfg = config();
   const text = [
     greeting,
     "",
@@ -126,29 +153,30 @@ export function renderWelcomeEmail(vars: WelcomeEmailVars): RenderedEmail {
     `Identifiant : ${vars.email}`,
     `Mot de passe : ${vars.password}`,
     "",
-    `Votre page publique : ${pageUrl}`,
+    `Votre page publique : ${salonPageUrl(vars.companyUserName)}`,
     "",
     `Besoin d'aide ? ${cfg.supportEmail}`,
     "",
     "— L'équipe Glaura",
   ].join("\n");
 
-  return { subject: cfg.subject, html, text };
+  return { subject: renderTemplate(template.subject, salon, { format: "TEXT", values }), html, text };
 }
 
 export type MaybeSendResult = { sent: boolean; skippedReason?: string; error?: string };
 
 /**
- * Orchestrates gate → render → send. NEVER throws — onboarding must not fail
- * because a welcome email couldn't go out. The caller records the outcome as a
- * non-fatal warning / job-event field.
+ * Orchestrates gate → load → render → send. NEVER throws — onboarding must not
+ * fail because a welcome email couldn't go out. The caller records the outcome
+ * as a non-fatal warning / job-event field.
  */
 export async function maybeSendWelcomeEmail(vars: WelcomeEmailVars): Promise<MaybeSendResult> {
   const gate = shouldSendWelcomeEmail(vars.email, vars.password);
   if (!gate.send) return { sent: false, skippedReason: gate.reason };
 
   try {
-    const { subject, html, text } = renderWelcomeEmail(vars);
+    const template = await loadWelcomeTemplate();
+    const { subject, html, text } = renderWelcomeEmail(vars, template);
     await sendEmail({ to: vars.email.trim(), subject, text, html });
     return { sent: true };
   } catch (error) {
