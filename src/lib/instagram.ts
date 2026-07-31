@@ -25,7 +25,8 @@ export function normalizeInstagramHandle(value: string | null | undefined): stri
   const trimmed = value?.trim().toLowerCase() ?? "";
   if (!trimmed) return null;
 
-  const path = trimmed.replace(/^@+/, "").replace(INSTAGRAM_HOST, "");
+  // Spreadsheet exports escape a leading @ as '@ — drop the escape with it.
+  const path = trimmed.replace(/^['"`‘’“”]*@+/, "").replace(INSTAGRAM_HOST, "");
   // Still a URL after dropping our own host → it points somewhere else.
   if (/^[a-z][a-z0-9+.-]*:\/\//.test(path)) return null;
 
