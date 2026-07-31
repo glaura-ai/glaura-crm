@@ -96,10 +96,25 @@ export async function POST(req: NextRequest) {
         },
       });
 
-  // Create the Glaura account and email the salon a way in. Deliberately after
-  // the CRM write and deliberately non-fatal: the lead is already captured in
-  // Airtable and here, so a bad minute in Firebase must not lose it. The salon
-  // gets a callback either way, and a commercial can trigger access by hand.
+  // Only a salon that typed the SMS code gets an account and an access email.
+  // The lead above is recorded either way, so an unverified submission is still
+  // a callback a commercial can work — it just cannot mint an account for
+  // someone else's salon or mail an address its author does not own. The site
+  // calls this endpoint twice: once on submit, once after the code checks out.
+  if (!body.phoneVerified) {
+    return NextResponse.json({
+      ok: true,
+      salonId: salon.id,
+      created: !existing,
+      account: "pending_verification",
+      accessEmailSent: false,
+    });
+  }
+
+  // Deliberately after the CRM write and deliberately non-fatal: the lead is
+  // already captured in Airtable and here, so a bad minute in Firebase must not
+  // lose it. The salon gets a callback either way, and a commercial can trigger
+  // access by hand.
   const account = await provisionLauraAccount({
     bookingUrl: body.bookingLink,
     contactName: body.name,

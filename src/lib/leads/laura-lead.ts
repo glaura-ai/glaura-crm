@@ -31,6 +31,15 @@ export const lauraLeadSchema = z.object({
   utmSource: z.string().trim().max(255).optional().nullable(),
   utmMedium: z.string().trim().max(255).optional().nullable(),
   utmCampaign: z.string().trim().max(255).optional().nullable(),
+  /** True once the salon has typed the SMS code we sent to `phone`.
+   *
+   *  The lead itself is recorded either way — a commercial can call back a
+   *  number nobody confirmed. What this gates is account creation and the
+   *  access email, the only two effects with any blast radius: without it, a
+   *  public form could mint Glaura accounts for other people's salons and mail
+   *  strangers. Defaults to false so a caller that forgets it gets the safe
+   *  behaviour rather than the dangerous one. */
+  phoneVerified: z.boolean().optional().default(false),
 });
 
 export type LauraLead = z.infer<typeof lauraLeadSchema>;

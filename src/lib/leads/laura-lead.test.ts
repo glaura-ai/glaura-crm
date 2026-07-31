@@ -147,3 +147,23 @@ describe("isBearerAuthorized", () => {
     expect(isBearerAuthorized("Bearer short", "a-much-longer-secret")).toBe(false);
   });
 });
+
+describe("phoneVerified", () => {
+  const base = { name: "Camille", phone: "0612345678" };
+
+  it("defaults to false, so a caller that omits it gets the safe behaviour", () => {
+    // The dangerous direction is provisioning an account for an unconfirmed
+    // number, so absence must never read as "verified".
+    expect(lauraLeadSchema.parse(base).phoneVerified).toBe(false);
+  });
+
+  it("is carried through when the site says the code checked out", () => {
+    expect(lauraLeadSchema.parse({ ...base, phoneVerified: true }).phoneVerified).toBe(true);
+  });
+
+  it("rejects a non-boolean rather than coercing it", () => {
+    // "false" and 0 are both truthy-ish in the wrong hands; refuse them.
+    expect(lauraLeadSchema.safeParse({ ...base, phoneVerified: "true" }).success).toBe(false);
+    expect(lauraLeadSchema.safeParse({ ...base, phoneVerified: 1 }).success).toBe(false);
+  });
+});
