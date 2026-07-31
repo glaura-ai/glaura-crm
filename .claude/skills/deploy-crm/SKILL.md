@@ -15,6 +15,12 @@ the server.
 - Image: `ghcr.io/glaura-ai/glaura-crm:latest`, built by `.github/workflows/build-image.yml`
 - Run config: `docker-compose.yml` **in this repo** is the source of truth. Step 4 copies it up, so server-side edits are overwritten — change it here and merge
 - Env file: `/opt/glaura/glaura-crm/.env.docker` on the host, NOT in the repo (secrets). Not the older 26-key `.env` sitting next to it
+  - `LAURA_LEAD_SECRET` — shared secret for `POST /api/leads/laura`, where the
+    marketing site posts "être rappelée" leads from glaura.ai/laura. Must match
+    `CRM_LAURA_LEAD_SECRET` in the Goglow-website env. **Unset means every lead
+    is rejected with 401** (fails closed by design), and the site then logs
+    `laura_lead_crm_failed` and keeps only the Airtable copy — so set it before
+    or with the deploy that first ships that endpoint
 - Postgres `glaura_crm` runs on the VPS **host**, not in Docker — hence `network_mode: host`
 - Web listens on `PORT=3102`
 - `/opt/glaura/glaura-crm` also holds a stale git checkout (unrelated to deploys, ignore it)

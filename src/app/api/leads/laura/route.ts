@@ -17,66 +17,19 @@
  */
 
 import { NextResponse, type NextRequest } from "next/server";
-import { timingSafeEqual } from "node:crypto";
-import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { slugify } from "@/lib/slugs";
-import type { $Enums } from "@/generated/prisma/client";
-
-type BookingTool = $Enums.BookingTool;
+import {
+  detectBookingTool,
+  externalRefFor,
+  isBearerAuthorized,
+  lauraLeadSchema,
+  notesFor,
+  salonNameFor,
+} from "@/lib/leads/laura-lead";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const BodySchema = z.object({
-  /** Contact person. The form requires it. */
-  name: z.string().trim().min(1).max(120),
-  /** The form requires it — this is a callback request. */
-  phone: z.string().trim().min(1).max(40),
-  email: z.string().email().max(190).optional().nullable(),
-  instagram: z.string().trim().max(120).optional().nullable(),
-  /** Salon name; falls back to the contact name when the salon skipped it. */
-  salon: z.string().trim().max(190).optional().nullable(),
-  /** Planity/Treatwell/Booksy/site URL. Optional on the form, so optional here. */
-  bookingLink: z.string().trim().max(500).optional().nullable(),
-  /** Airtable record id, when the site managed to write there too. Doubles as
-   *  the idempotency key so the two systems point at the same lead. */
-  airtableRecordId: z.string().trim().max(64).optional().nullable(),
-  source: z.string().trim().max(255).optional().nullable(),
-  utmSource: z.string().trim().max(255).optional().nullable(),
-  utmMedium: z.string().trim().max(255).optional().nullable(),
-  utmCampaign: z.string().trim().max(255).optional().nullable(),
-});
-
-/** Maps a booking-page host to its CRM BookingTool. Mirrors the mapping in
- *  /api/self-serve/onboard — keep the two in step. */
-function detectBookingTool(url: string | null | undefined): BookingTool {
-  if (!url) return "NONE";
-  let host = "";
-  try {
-    host = new URL(url).hostname.toLowerCase();
-  } catch {
-    return "SITE";
-  }
-  if (host.includes("planity")) return "PLANITY";
-  if (host.includes("treatwell")) return "TREATWELL";
-  if (host.includes("booksy")) return "BOOKSY";
-  if (host.includes("acuity")) return "ACUITY";
-  if (host.includes("fresha")) return "FRESHA";
-  return "SITE";
-}
-
-function isAuthorized(req: NextRequest): boolean {
-  const secret = process.env.LAURA_LEAD_SECRET?.trim();
-  if (!secret) return false;
-  const header = req.headers.get("authorization") ?? "";
-  const presented = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-  if (!presented) return false;
-  const a = Buffer.from(presented);
-  const b = Buffer.from(secret);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
 
 /** Reserves the first free Salon slug starting at `base`, then `base-1`, … */
 async function reserveSalonSlug(base: string): Promise<string> {
@@ -90,7 +43,7 @@ async function reserveSalonSlug(base: string): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
-  if (!isAuthorized(req)) {
+  if (!isBearerAuthorized(req.headers.get("authorization"), process.env.LAURA_LEAD_SECRET)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -101,28 +54,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
-  const parsed = BodySchema.safeParse(json);
+  const parsed = lauraLeadSchema.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json({ error: "invalid_body", issues: parsed.error.flatten() }, { status: 400 });
   }
   const body = parsed.data;
 
-  // Idempotency: the Airtable record id when we have one, else the phone the
-  // salon asked to be called on. A double submit updates one row, never two.
-  const externalRef = body.airtableRecordId
-    ? `laura_lead:${body.airtableRecordId}`
-    : `laura_lead_phone:${body.phone.replace(/\s+/g, "")}`;
-
-  const salonName = body.salon || body.name;
-  const notes = [
-    "Demande de rappel depuis /laura.",
-    body.source ? `Source : ${body.source}` : null,
-    [body.utmSource, body.utmMedium, body.utmCampaign].some(Boolean)
-      ? `UTM : ${[body.utmSource, body.utmMedium, body.utmCampaign].filter(Boolean).join(" / ")}`
-      : null,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const externalRef = externalRefFor(body);
+  const salonName = salonNameFor(body);
+  const notes = notesFor(body);
 
   const existing = await prisma.salon.findFirst({ where: { externalRef }, select: { id: true } });
 
