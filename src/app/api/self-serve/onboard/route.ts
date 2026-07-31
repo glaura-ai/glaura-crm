@@ -20,6 +20,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { normalizeInstagramHandle } from "@/lib/instagram";
 import { slugify } from "@/lib/slugs";
 import type { OnboardingOverrides } from "@/lib/onboarding";
 import type { $Enums } from "@/generated/prisma/client";
@@ -44,7 +45,8 @@ const BodySchema = z.object({
   salonName: z.string().min(1),
   /** Booking-page URL to scrape (Planity/Treatwell/Booksy/site). */
   bookingUrl: z.string().url(),
-  instagramHandle: z.string().trim().optional(),
+  /** Handle, @handle or a pasted profile URL — stored as a bare handle. */
+  instagramHandle: z.string().trim().max(500).optional().transform(normalizeInstagramHandle),
   address: z.string().trim().optional(),
   phone: z.string().trim().optional(),
   /** Example agents to synthesize when the scrape finds no real staff. */

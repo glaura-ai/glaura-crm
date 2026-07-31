@@ -6,6 +6,7 @@
 
 import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
+import { normalizeInstagramHandle } from "@/lib/instagram";
 import type { $Enums } from "@/generated/prisma/client";
 
 type BookingTool = $Enums.BookingTool;
@@ -16,7 +17,9 @@ export const lauraLeadSchema = z.object({
   /** The form requires it — this is a callback request. */
   phone: z.string().trim().min(1).max(40),
   email: z.string().email().max(190).optional().nullable(),
-  instagram: z.string().trim().max(120).optional().nullable(),
+  /** Handle, @handle or a pasted profile URL — normalized to a bare handle, so
+   *  the length cap has to leave room for a URL rather than reject the lead. */
+  instagram: z.string().trim().max(500).optional().nullable().transform(normalizeInstagramHandle),
   /** Salon name; falls back to the contact name when the salon skipped it. */
   salon: z.string().trim().max(190).optional().nullable(),
   /** Planity/Treatwell/Booksy/site URL. Optional on the form, so optional here. */

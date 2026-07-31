@@ -7,6 +7,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { isDailyPriorityActive, startOfDay } from "@/lib/dailyPriority";
 import { geocodeAddress } from "@/lib/geocode";
+import { normalizeInstagramHandle } from "@/lib/instagram";
 import { uniqueEmailTemplateKey, uniqueSalonSlug } from "@/lib/slugs";
 import { defaultEmailFrom } from "@/lib/email";
 import { decrypt } from "@/lib/crypto";
@@ -79,7 +80,7 @@ async function parse(fd: FormData) {
     phone: optionalString(fd.get("phone")),
     contactName: optionalString(fd.get("contactName")),
     contactEmail: optionalString(fd.get("contactEmail")),
-    instagram: cleanInstagram((fd.get("instagram") || "").toString()) || undefined,
+    instagram: normalizeInstagramHandle(fd.get("instagram")?.toString()) ?? undefined,
     bookingTool: optionalString(fd.get("bookingTool")),
     bookingUrl: optionalString(fd.get("bookingUrl")),
     status: optionalString(fd.get("status")),
@@ -118,23 +119,6 @@ async function parse(fd: FormData) {
     status: (d.status as SalonStatus) || "A_VISITER",
     notes: d.notes || null,
   };
-}
-
-function cleanInstagram(value: string): string | null {
-  const trimmed = value.trim().replace(/^@/, "");
-  if (!trimmed) return null;
-  try {
-    const url = new URL(trimmed);
-    if (url.hostname.toLowerCase().includes("instagram.com")) {
-      return url.pathname.split("/").filter(Boolean)[0] ?? null;
-    }
-  } catch {
-    // Plain handle.
-  }
-  return trimmed
-    .replace(/^https?:\/\/(www\.)?instagram\.com\//i, "")
-    .split(/[/?#]/)[0]
-    .replace(/^@/, "") || null;
 }
 
 // Prisma throws P2002 when a unique index rejects a write; `target` names the

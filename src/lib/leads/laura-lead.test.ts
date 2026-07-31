@@ -21,6 +21,23 @@ describe("lauraLeadSchema", () => {
     expect(parsed.bookingLink).toBeUndefined();
   });
 
+  it("stores a bare Instagram handle whatever the salon typed", () => {
+    const typed = lauraLeadSchema.parse({ name: "C", phone: "06", instagram: "@gg_pyvaline" });
+    expect(typed.instagram).toBe("gg_pyvaline");
+
+    const pasted = lauraLeadSchema.parse({
+      name: "C",
+      phone: "06",
+      instagram: "https://www.instagram.com/zazen.paris/?hl=fr",
+    });
+    expect(pasted.instagram).toBe("zazen.paris");
+  });
+
+  it("keeps the lead when the Instagram field is unusable — the callback matters more", () => {
+    const parsed = lauraLeadSchema.parse({ name: "C", phone: "06", instagram: "je n'en ai pas" });
+    expect(parsed.instagram).toBeNull();
+  });
+
   it("rejects a malformed email rather than storing junk", () => {
     expect(
       lauraLeadSchema.safeParse({ name: "C", phone: "06", email: "not-an-email" }).success,
