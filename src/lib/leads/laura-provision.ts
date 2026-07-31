@@ -14,11 +14,20 @@ import { buildLauraUserProfile, type LauraAccountInput } from "@/lib/leads/laura
  *
  * Idempotent on the login email — a salon that submits twice gets one account
  * and one fresh link, never a duplicate or a collision error.
+ *
+ * The access email is NOT sent here. It is handed back as `sendAccessEmail` so
+ * the caller can run it after responding: an inline SMTP handshake was the
+ * single biggest part of the wait on a screen where the salon is watching a
+ * spinner, and the account already exists by then — the email is a
+ * notification, not a step.
  */
 
+/** Sends the access email and resolves with what happened; never rejects. */
+export type SendAccessEmail = () => Promise<{ sent: boolean; error?: string }>;
+
 export type LauraProvisionResult =
-  | { status: "created"; uid: string; emailSent: boolean; emailError?: string }
-  | { status: "existing"; uid: string; emailSent: boolean; emailError?: string }
+  | { status: "created"; uid: string; sendAccessEmail: SendAccessEmail }
+  | { status: "existing"; uid: string; sendAccessEmail: SendAccessEmail }
   | { status: "skipped"; reason: string }
   | { status: "failed"; error: string };
 
@@ -36,14 +45,8 @@ export async function provisionLauraAccount(
   // colliding — the salon is asking for access either way.
   try {
     const existing = await auth.getUserByEmail(email);
-    const mail = await maybeSendMagicLinkEmail({
-      email,
-      salonName: input.salonName,
-      uid: existing.uid,
-    });
     return {
-      emailError: mail.error,
-      emailSent: mail.sent,
+      sendAccessEmail: accessEmailFor(existing.uid, email, input.salonName),
       status: "existing",
       uid: existing.uid,
     };
@@ -85,23 +88,40 @@ export async function provisionLauraAccount(
     };
   }
 
-  const mail = await maybeSendMagicLinkEmail({ email, salonName: input.salonName, uid });
-  return { emailError: mail.error, emailSent: mail.sent, status: "created", uid };
+  return { sendAccessEmail: accessEmailFor(uid, email, input.salonName), status: "created", uid };
 }
 
-/** First free `companyUserName`, which the portal turns into the public URL. */
+function accessEmailFor(uid: string, email: string, salonName: string): SendAccessEmail {
+  return async () => {
+    const mail = await maybeSendMagicLinkEmail({ email, salonName, uid });
+    return { error: mail.error, sent: mail.sent };
+  };
+}
+
+/**
+ * First free `companyUserName`, which the portal turns into the public URL.
+ *
+ * One prefix query rather than a query per candidate: the old loop cost a round
+ * trip for every name already taken, on a request the salon is waiting on.
+ */
 async function reserveCompanyUserName(
   db: ReturnType<typeof getDb>,
   base: string,
 ): Promise<string> {
+  const snap = await db
+    .collection("userProfile")
+    .where("companyUserName", ">=", base)
+    // \uf8ff sorts above any character Firestore stores, so the range covers
+    // exactly the names starting with `base` and nothing beyond them.
+    .where("companyUserName", "<", `${base}\uf8ff`)
+    .select("companyUserName")
+    .get();
+
+  const taken = new Set(snap.docs.map((doc) => doc.get("companyUserName") as string));
+
   for (let i = 0; i < 100; i++) {
     const candidate = i === 0 ? base : `${base}-${i}`;
-    const clash = await db
-      .collection("userProfile")
-      .where("companyUserName", "==", candidate)
-      .limit(1)
-      .get();
-    if (clash.empty) return candidate;
+    if (!taken.has(candidate)) return candidate;
   }
   // Fall back to something guaranteed unique rather than failing the signup.
   return `${base}-${Date.now().toString(36)}`;

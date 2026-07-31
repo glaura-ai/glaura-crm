@@ -16,7 +16,7 @@
  * self-serve endpoint.
  */
 
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, after, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { slugify } from "@/lib/slugs";
 import {
@@ -126,8 +126,22 @@ export async function POST(req: NextRequest) {
 
   if (account.status === "failed") {
     console.error("laura_lead_account_failed", { externalRef, error: account.error });
-  } else if (account.status !== "skipped" && !account.emailSent) {
-    console.error("laura_lead_access_email_failed", { externalRef, error: account.emailError });
+  }
+
+  if (account.status === "created" || account.status === "existing") {
+    // After the response, not before it. The salon is watching a spinner and
+    // the account already exists — making them wait on an SMTP handshake buys
+    // nothing. `after` keeps the invocation alive until the send finishes.
+    const send = account.sendAccessEmail;
+    after(async () => {
+      const mail = await send().catch((error: unknown) => ({
+        error: error instanceof Error ? error.message : String(error),
+        sent: false,
+      }));
+      if (!mail.sent) {
+        console.error("laura_lead_access_email_failed", { externalRef, error: mail.error });
+      }
+    });
   }
 
   return NextResponse.json({
@@ -135,8 +149,8 @@ export async function POST(req: NextRequest) {
     salonId: salon.id,
     created: !existing,
     account: account.status,
-    accessEmailSent: account.status === "created" || account.status === "existing"
-      ? account.emailSent
-      : false,
+    // The send is scheduled, not finished — reporting it as sent would be a
+    // guess, and nothing downstream reads this field to decide anything.
+    accessEmailQueued: account.status === "created" || account.status === "existing",
   });
 }
