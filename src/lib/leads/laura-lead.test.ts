@@ -21,6 +21,23 @@ describe("lauraLeadSchema", () => {
     expect(parsed.bookingLink).toBeUndefined();
   });
 
+  it("stores a bare Instagram handle whatever the salon typed", () => {
+    const typed = lauraLeadSchema.parse({ name: "C", phone: "06", instagram: "@gg_pyvaline" });
+    expect(typed.instagram).toBe("gg_pyvaline");
+
+    const pasted = lauraLeadSchema.parse({
+      name: "C",
+      phone: "06",
+      instagram: "https://www.instagram.com/zazen.paris/?hl=fr",
+    });
+    expect(pasted.instagram).toBe("zazen.paris");
+  });
+
+  it("keeps the lead when the Instagram field is unusable — the callback matters more", () => {
+    const parsed = lauraLeadSchema.parse({ name: "C", phone: "06", instagram: "je n'en ai pas" });
+    expect(parsed.instagram).toBeNull();
+  });
+
   it("rejects a malformed email rather than storing junk", () => {
     expect(
       lauraLeadSchema.safeParse({ name: "C", phone: "06", email: "not-an-email" }).success,
@@ -128,5 +145,25 @@ describe("isBearerAuthorized", () => {
     // timingSafeEqual throws on unequal lengths; the guard must catch that.
     expect(() => isBearerAuthorized("Bearer short", "a-much-longer-secret")).not.toThrow();
     expect(isBearerAuthorized("Bearer short", "a-much-longer-secret")).toBe(false);
+  });
+});
+
+describe("phoneVerified", () => {
+  const base = { name: "Camille", phone: "0612345678" };
+
+  it("defaults to false, so a caller that omits it gets the safe behaviour", () => {
+    // The dangerous direction is provisioning an account for an unconfirmed
+    // number, so absence must never read as "verified".
+    expect(lauraLeadSchema.parse(base).phoneVerified).toBe(false);
+  });
+
+  it("is carried through when the site says the code checked out", () => {
+    expect(lauraLeadSchema.parse({ ...base, phoneVerified: true }).phoneVerified).toBe(true);
+  });
+
+  it("rejects a non-boolean rather than coercing it", () => {
+    // "false" and 0 are both truthy-ish in the wrong hands; refuse them.
+    expect(lauraLeadSchema.safeParse({ ...base, phoneVerified: "true" }).success).toBe(false);
+    expect(lauraLeadSchema.safeParse({ ...base, phoneVerified: 1 }).success).toBe(false);
   });
 });

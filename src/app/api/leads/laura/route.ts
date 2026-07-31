@@ -27,6 +27,7 @@ import {
   notesFor,
   salonNameFor,
 } from "@/lib/leads/laura-lead";
+import { provisionLauraAccount } from "@/lib/leads/laura-provision";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -95,5 +96,47 @@ export async function POST(req: NextRequest) {
         },
       });
 
-  return NextResponse.json({ ok: true, salonId: salon.id, created: !existing });
+  // Only a salon that typed the SMS code gets an account and an access email.
+  // The lead above is recorded either way, so an unverified submission is still
+  // a callback a commercial can work — it just cannot mint an account for
+  // someone else's salon or mail an address its author does not own. The site
+  // calls this endpoint twice: once on submit, once after the code checks out.
+  if (!body.phoneVerified) {
+    return NextResponse.json({
+      ok: true,
+      salonId: salon.id,
+      created: !existing,
+      account: "pending_verification",
+      accessEmailSent: false,
+    });
+  }
+
+  // Deliberately after the CRM write and deliberately non-fatal: the lead is
+  // already captured in Airtable and here, so a bad minute in Firebase must not
+  // lose it. The salon gets a callback either way, and a commercial can trigger
+  // access by hand.
+  const account = await provisionLauraAccount({
+    bookingUrl: body.bookingLink,
+    contactName: body.name,
+    email: body.email ?? "",
+    instagram: body.instagram,
+    phone: body.phone,
+    salonName,
+  });
+
+  if (account.status === "failed") {
+    console.error("laura_lead_account_failed", { externalRef, error: account.error });
+  } else if (account.status !== "skipped" && !account.emailSent) {
+    console.error("laura_lead_access_email_failed", { externalRef, error: account.emailError });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    salonId: salon.id,
+    created: !existing,
+    account: account.status,
+    accessEmailSent: account.status === "created" || account.status === "existing"
+      ? account.emailSent
+      : false,
+  });
 }
