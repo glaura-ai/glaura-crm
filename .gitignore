@@ -24,7 +24,10 @@
 .DS_Store
 *.pem
 pwd.txt
-*cookies.txt
+# Session cookie jars. Broad on purpose: "cookies (3).txt" (a browser export's
+# duplicate-download name) slipped past the old `*cookies.txt` pattern.
+*cookie*.txt
+*cookie*.json
 /tmp/
 
 # debug
