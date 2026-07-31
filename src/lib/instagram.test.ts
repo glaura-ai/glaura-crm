@@ -15,6 +15,14 @@ describe("normalizeInstagramHandle", () => {
     expect(normalizeInstagramHandle("@@gg_pyvaline")).toBe("gg_pyvaline");
   });
 
+  it("strips the quote a spreadsheet export prefixes to an @ cell", () => {
+    // Airtable/CSV escape a leading @ as '@ — 6 imported salons carry it.
+    expect(normalizeInstagramHandle("'@ly.nailed")).toBe("ly.nailed");
+    expect(normalizeInstagramHandle('"@ly.nailed')).toBe("ly.nailed");
+    // …but only the escape itself: trailing commentary is still not a handle.
+    expect(normalizeInstagramHandle("'@maisonirisee les deux !")).toBeNull();
+  });
+
   it("pulls the handle out of a pasted profile URL", () => {
     expect(normalizeInstagramHandle("https://www.instagram.com/zazen.paris")).toBe("zazen.paris");
     expect(normalizeInstagramHandle("https://instagram.com/zazen.paris/")).toBe("zazen.paris");
