@@ -74,7 +74,7 @@ export function renderMagicLinkEmail(vars: { salonName?: string | null; magicLin
           <h1 style="font-size:24px;font-weight:800;letter-spacing:-.01em;margin:0 0 12px;">Votre espace Glaura est prêt 🎉</h1>
           <p style="font-size:15px;line-height:1.5;color:#4a4650;margin:0 0 28px;">Nous avons préparé votre salon. Cliquez ci-dessous pour accéder à votre espace — aucun mot de passe à retenir.</p>
           <a href="${linkHtml}" style="display:inline-block;background:#E50050;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:12px;">Accéder à mon salon →</a>
-          <p style="font-size:13px;color:#8a8590;margin:28px 0 0;">Ce lien est valable 7 jours et à usage unique. Besoin d'aide ? <a href="mailto:${escapeHtml(cfg.supportEmail)}" style="color:#E50050;">${escapeHtml(cfg.supportEmail)}</a></p>
+          <p style="font-size:13px;color:#8a8590;margin:28px 0 0;">Ce lien est valable 7 jours et à usage unique. Une fois connectée, vous pourrez définir un mot de passe dans <strong>Paramètres&nbsp;→&nbsp;Profil</strong> pour vous reconnecter librement. Besoin d'aide ? <a href="mailto:${escapeHtml(cfg.supportEmail)}" style="color:#E50050;">${escapeHtml(cfg.supportEmail)}</a></p>
         </td></tr>
       </table>
       <p style="font-size:12px;color:#b1acb4;margin:20px 0 0;">— L'équipe Glaura</p>
@@ -90,6 +90,7 @@ export function renderMagicLinkEmail(vars: { salonName?: string | null; magicLin
     `Accédez à votre espace (aucun mot de passe) : ${vars.magicLink}`,
     "",
     "Ce lien est valable 7 jours et à usage unique.",
+    "Une fois connectée, définissez un mot de passe dans Paramètres → Profil pour vous reconnecter librement.",
     `Besoin d'aide ? ${cfg.supportEmail}`,
     "",
     "— L'équipe Glaura",
