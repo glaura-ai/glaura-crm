@@ -72,6 +72,11 @@ export type OnboardingOverrides = {
    * enrich mode. See docs/product/32-self-serve-onboarding-implementation.md.
    */
   magicLinkSignIn?: boolean | null;
+  /** Public /pro conversion flow: enrich an inactive account, generate a
+   * tokenized salon preview and withhold access until Stripe activation. */
+  activationPreview?: boolean | null;
+  planCode?: "basic" | "reservation" | null;
+  trialPeriodDays?: number | null;
 };
 
 export type OnboardingHints = {

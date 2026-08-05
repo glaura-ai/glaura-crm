@@ -53,6 +53,17 @@ const BodySchema = z.object({
   agentCount: z.number().int().min(0).max(50).optional(),
   /** Curated 5★ reviews to seed. Self-serve default is 0 (real reviews only). */
   reviewTarget: z.number().int().min(0).max(500).optional(),
+  activationPreview: z.boolean().optional().default(false),
+  planCode: z.enum(["basic", "reservation"]).optional(),
+  trialPeriodDays: z.number().int().min(1).max(30).optional(),
+}).superRefine((body, context) => {
+  if (body.activationPreview && (!body.targetUid || !body.planCode || !body.trialPeriodDays)) {
+    context.addIssue({
+      code: "custom",
+      message: "activationPreview requires targetUid, planCode and trialPeriodDays",
+      path: ["activationPreview"],
+    });
+  }
 });
 
 /** Maps a booking-page host to its CRM BookingTool + worker sourceType string. */
@@ -130,9 +141,12 @@ export async function POST(req: NextRequest) {
         mode: "enrich",
         targetUid: body.targetUid,
         loginEmail: body.email,
-        enable: true,
+        enable: body.activationPreview ? false : true,
         agentCount: body.agentCount ?? 0,
         reviewTarget: body.reviewTarget ?? 0,
+        activationPreview: body.activationPreview,
+        planCode: body.planCode,
+        trialPeriodDays: body.trialPeriodDays,
       }
     : {
         loginEmail: body.email,
@@ -143,28 +157,68 @@ export async function POST(req: NextRequest) {
       };
 
   try {
-    const salonId =
-      existingSalon?.id ??
-      (
-        await prisma.salon.create({
-          data: {
-            name: body.salonName,
-            slug: await reserveSalonSlug(slugify(body.salonName)),
-            address: body.address ?? null,
-            phone: body.phone ?? null,
-            contactName: body.contactName ?? null,
-            contactEmail: body.email,
-            instagram: body.instagramHandle ?? null,
-            bookingTool,
-            bookingUrl: body.bookingUrl,
-            source: "IMPORT",
-            externalRef,
-            status: "SIGNE",
-            accountStatusLabel: "self_serve",
-          },
-          select: { id: true },
-        })
-      ).id;
+    const salonId = existingSalon?.id
+      ? (
+          await prisma.salon.update({
+            where: { id: existingSalon.id },
+            data: {
+              name: body.salonName,
+              phone: body.phone ?? null,
+              contactName: body.contactName ?? null,
+              contactEmail: body.email,
+              instagram: body.instagramHandle ?? null,
+              bookingTool,
+              bookingUrl: body.bookingUrl,
+              status: body.activationPreview ? "INTERESSE" : "SIGNE",
+              accountStatusLabel: body.activationPreview ? "pro_preview" : "self_serve",
+            },
+            select: { id: true },
+          })
+        ).id
+      : (
+          await prisma.salon.create({
+            data: {
+              name: body.salonName,
+              slug: await reserveSalonSlug(slugify(body.salonName)),
+              address: body.address ?? null,
+              phone: body.phone ?? null,
+              contactName: body.contactName ?? null,
+              contactEmail: body.email,
+              instagram: body.instagramHandle ?? null,
+              bookingTool,
+              bookingUrl: body.bookingUrl,
+              source: "IMPORT",
+              externalRef,
+              status: body.activationPreview ? "INTERESSE" : "SIGNE",
+              accountStatusLabel: body.activationPreview ? "pro_preview" : "self_serve",
+            },
+            select: { id: true },
+          })
+        ).id;
+
+    // A Meta callback retry must not enqueue a second scrape/build. Return the
+    // active or completed preview job for this uid/source instead.
+    if (body.activationPreview) {
+      const recent = await prisma.onboardingJob.findMany({
+        where: {
+          salonId,
+          sourceUrl: body.bookingUrl,
+          status: { in: ["QUEUED", "PROCESSING", "DONE"] },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        select: { id: true, config: true },
+      });
+      const duplicate = recent.find((candidate) => {
+        const value = candidate.config;
+        return Boolean(value && typeof value === "object" &&
+          !Array.isArray(value) &&
+          (value as Record<string, unknown>).activationPreview === true);
+      });
+      if (duplicate) {
+        return NextResponse.json({ jobId: duplicate.id, salonId }, { status: 202 });
+      }
+    }
 
     const job = await prisma.onboardingJob.create({
       data: {

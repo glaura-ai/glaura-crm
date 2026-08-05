@@ -478,7 +478,7 @@ async function applyCatalogEnrichment(
 
 /**
  * Self-serve ENRICH path (mode === "enrich"): the portal already created the
- * Firebase Auth user and a minimal LIVE `userProfile/{targetUid}` (name, slug,
+ * Firebase Auth user and a minimal `userProfile/{targetUid}` (name, slug,
  * address chosen by the salon). This attaches the scraped catalog onto that
  * existing account — opening hours, gallery images, services, agents, reviews —
  * WITHOUT touching the salon-chosen identity fields (companyName,
@@ -537,7 +537,9 @@ async function enrichExistingAccount(
   const { profileImg, salonImages } = await rehostSalonImages(uid, extract.salon.images, Date.now(), warnings);
 
   // Merge-patch only the enrichment fields. `merge: true` leaves the salon's
-  // own name/slug/address/spLocation intact; we never send those keys here.
+  // own name/slug/address/spLocation intact. The public /pro flow is the one
+  // exception for display names: its compact form starts with @instagram, so
+  // the verified booking-page extraction supplies the real salon name.
   // Bio, gallery and hours only overwrite when the scrape actually produced a
   // value, so a re-run can't blank out fields the salon has since edited.
   const patch: Record<string, unknown> = {
@@ -547,6 +549,15 @@ async function enrichExistingAccount(
   };
   if (typeof extract.salon.bio === "string" && extract.salon.bio.trim()) {
     patch.salonBio = extract.salon.bio.trim();
+  }
+  const extractedSalonName = extract.salon.name?.trim();
+  if (overrides.activationPreview && extractedSalonName) {
+    const existingCompanyUserName = typeof existing.get("companyUserName") === "string" ?
+      existing.get("companyUserName") as string : "";
+    patch.name = extractedSalonName;
+    patch.companyName = extractedSalonName;
+    patch.storeName = extractedSalonName;
+    patch.searchNameList = buildSearchNameList(extractedSalonName, existingCompanyUserName);
   }
   if (profileImg) patch.profileImg = profileImg;
   if (salonImages.length > 0) patch.salon_images = salonImages;
