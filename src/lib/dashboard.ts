@@ -16,7 +16,8 @@ export async function getDashboard(today = new Date(), ownerId?: string) {
   const dayStart = startOfDay(today);
   const dayEnd = endOfDay(today);
   const weekStart = startOfWeek(today);
-  const salonScope = ownerId ? { assignedToId: ownerId } : {};
+  // Archived salons (merged duplicates, manual archives) are out of the pipeline.
+  const salonScope = { archivedAt: null, ...(ownerId ? { assignedToId: ownerId } : {}) };
   const activityScope = ownerId ? { userId: ownerId } : {};
 
   const [
@@ -49,7 +50,7 @@ export async function getDashboard(today = new Date(), ownerId?: string) {
       include: { assignedTo: { select: { name: true, email: true } } },
     }),
     prisma.reminder.findMany({
-      where: { ...(ownerId ? { userId: ownerId } : {}), done: false, dueAt: { lte: dayEnd } },
+      where: { ...(ownerId ? { userId: ownerId } : {}), done: false, dueAt: { lte: dayEnd }, salon: { archivedAt: null } },
       orderBy: { dueAt: "asc" },
       take: 5,
       include: { salon: { select: { id: true, name: true, status: true, type: true } } },

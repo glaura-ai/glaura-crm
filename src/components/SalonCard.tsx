@@ -1,10 +1,11 @@
 import Link from "next/link";
 import type { SalonListItem } from "@/lib/salons";
 import { Stars } from "@/components/Stars";
+import { SalonCardActions } from "@/components/SalonCardActions";
 import { METIER_LABEL, STATUS_LABEL, STATUS_STYLE, TYPE_STYLE } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 
-export function SalonCard({ salon }: { salon: SalonListItem }) {
+export function SalonCard({ salon, canDelete = false }: { salon: SalonListItem; canDelete?: boolean }) {
   return (
     <div className="group relative rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200 transition hover:shadow-md hover:ring-rose-200">
       <Link href={`/salons/${salon.id}`} aria-label={`Ouvrir ${salon.name}`} className="absolute inset-0 rounded-2xl" />
@@ -35,7 +36,8 @@ export function SalonCard({ salon }: { salon: SalonListItem }) {
         </p>
       )}
 
-      <div className="mt-3 flex items-center justify-between text-sm">
+      {/* pointer-coarse: the action pill is always visible on touch screens — pad so it never covers the stars */}
+      <div className="mt-3 flex items-center justify-between text-sm pointer-coarse:pr-16">
         {salon.instagram ? (
           <a
             href={`https://www.instagram.com/${salon.instagram}`}
@@ -50,6 +52,8 @@ export function SalonCard({ salon }: { salon: SalonListItem }) {
         )}
         <Stars rating={salon.rating} />
       </div>
+
+      <SalonCardActions salonId={salon.id} salonName={salon.name} canDelete={canDelete} />
     </div>
   );
 }
