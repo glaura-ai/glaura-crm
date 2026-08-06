@@ -22,6 +22,8 @@ describe("/pro preview activation", () => {
   it("builds the tokenized preview on the canonical /pro route", () => {
     expect(buildProPreviewUrl("https://glaura.ai/", "opaque_token"))
       .toBe("https://glaura.ai/pro/preview/opaque_token");
+    expect(buildProPreviewUrl("https://staging-1.glaura.ai", "opaque_token"))
+      .toBe("https://staging-1.glaura.ai/pro/preview/opaque_token");
   });
 
   it("renders email and plaintext alternatives with the salon preview", () => {

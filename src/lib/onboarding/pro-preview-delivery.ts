@@ -22,11 +22,14 @@ export async function prepareAndNotifyProPreview(input: {
   serviceCount: number;
   planCode: ProPlanCode;
   trialPeriodDays: number;
+  publicBaseUrl?: "https://glaura.ai" | "https://staging-1.glaura.ai";
 }) {
   const secret = process.env.PRO_PREVIEW_TOKEN_SECRET ?? "";
   const token = proPreviewToken(input.jobId, secret);
   const tokenHash = hashProPreviewToken(token);
-  const publicBase = process.env.GLAURA_PUBLIC_BASE_URL || "https://glaura.ai";
+  const publicBase = input.publicBaseUrl ||
+    process.env.GLAURA_PUBLIC_BASE_URL ||
+    "https://glaura.ai";
   const previewUrl = buildProPreviewUrl(publicBase, token);
   const successUrl = `${previewUrl}?activated=1`;
   const db = getDb();
