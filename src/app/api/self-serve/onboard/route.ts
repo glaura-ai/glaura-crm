@@ -56,6 +56,10 @@ const BodySchema = z.object({
   activationPreview: z.boolean().optional().default(false),
   planCode: z.enum(["basic", "reservation"]).optional(),
   trialPeriodDays: z.number().int().min(1).max(30).optional(),
+  /** Origin is selected by the trusted portal environment before OAuth. Keep
+   * the allowlist explicit so notification links can never become an open
+   * redirect if this service-to-service payload is malformed. */
+  publicBaseUrl: z.enum(["https://glaura.ai", "https://staging-1.glaura.ai"]).optional(),
 }).superRefine((body, context) => {
   if (body.activationPreview && (!body.targetUid || !body.planCode || !body.trialPeriodDays)) {
     context.addIssue({
@@ -147,6 +151,7 @@ export async function POST(req: NextRequest) {
         activationPreview: body.activationPreview,
         planCode: body.planCode,
         trialPeriodDays: body.trialPeriodDays,
+        publicBaseUrl: body.publicBaseUrl,
       }
     : {
         loginEmail: body.email,

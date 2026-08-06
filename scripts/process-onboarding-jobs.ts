@@ -373,6 +373,7 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
           serviceCount: result.serviceCount,
           planCode: overrides.planCode === "basic" ? "basic" : "reservation",
           trialPeriodDays: overrides.trialPeriodDays ?? 14,
+          publicBaseUrl: overrides.publicBaseUrl ?? undefined,
         });
         await emit("system", {
           type: "preview_ready",

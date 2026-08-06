@@ -77,6 +77,8 @@ export type OnboardingOverrides = {
   activationPreview?: boolean | null;
   planCode?: "basic" | "reservation" | null;
   trialPeriodDays?: number | null;
+  /** Public website origin captured by the portal before OAuth. */
+  publicBaseUrl?: "https://glaura.ai" | "https://staging-1.glaura.ai" | null;
 };
 
 export type OnboardingHints = {
