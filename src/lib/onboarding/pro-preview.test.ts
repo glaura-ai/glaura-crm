@@ -62,5 +62,17 @@ describe("/pro preview activation", () => {
       stripeSubscriptionPlanCode: "basic",
       stripeSubscriptionStatus: "trialing",
     }, "basic")).toBe(false);
+    expect(subscriptionMatchesActivation({
+      stripeSubscriptionId: "sub_test",
+      stripeSubscriptionIsLive: false,
+      stripeSubscriptionPlanCode: "basic",
+      stripeSubscriptionStatus: "trialing",
+    }, "basic", false)).toBe(true);
+    expect(subscriptionMatchesActivation({
+      stripeSubscriptionId: "sub_live",
+      stripeSubscriptionIsLive: true,
+      stripeSubscriptionPlanCode: "basic",
+      stripeSubscriptionStatus: "trialing",
+    }, "basic", false)).toBe(false);
   });
 });

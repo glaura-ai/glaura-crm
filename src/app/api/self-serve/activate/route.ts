@@ -13,6 +13,9 @@ export const dynamic = "force-dynamic";
 const BodySchema = z.object({
   tokenHash: z.string().regex(/^[a-f0-9]{64}$/),
   uid: z.string().min(1),
+  // Older production portal images do not send this field. Defaulting to live
+  // preserves that rollout path; staging always sends false explicitly.
+  isStripeLive: z.boolean().default(true),
 });
 
 const CLAIM_STALE_MS = 2 * 60 * 1000;
@@ -59,7 +62,11 @@ export async function POST(request: NextRequest) {
 
   const profileRef = db.collection("userProfile").doc(parsed.data.uid);
   const profile = await profileRef.get();
-  if (!profile.exists || !subscriptionMatchesActivation(profile.data() ?? {}, planCode)) {
+  if (!profile.exists || !subscriptionMatchesActivation(
+    profile.data() ?? {},
+    planCode,
+    parsed.data.isStripeLive,
+  )) {
     return NextResponse.json({ ok: false, error: "payment_required" }, { status: 402 });
   }
 

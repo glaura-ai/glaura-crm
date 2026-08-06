@@ -46,12 +46,13 @@ export function renderProPreviewEmail(input: {
 export function subscriptionMatchesActivation(
   profile: Record<string, unknown>,
   expectedPlanCode: ProPlanCode,
+  expectedIsLive = true,
 ): boolean {
   const id = text(profile.stripeSubscriptionId);
   const status = text(profile.stripeSubscriptionStatus);
   const planCode = text(profile.stripeSubscriptionPlanCode);
   return Boolean(id) &&
-    profile.stripeSubscriptionIsLive === true &&
+    profile.stripeSubscriptionIsLive === expectedIsLive &&
     (status === "active" || status === "trialing") &&
     planCode === expectedPlanCode;
 }
