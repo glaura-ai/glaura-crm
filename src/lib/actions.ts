@@ -205,6 +205,26 @@ export async function changeStatus(salonId: string, fd: FormData) {
   revalidatePath("/dashboard");
 }
 
+/** Soft delete: hides the salon from the pipeline, keeps it auditable and un-mergeable. */
+export async function archiveSalon(salonId: string) {
+  await assertCanAccessSalon(salonId);
+  await prisma.salon.update({
+    where: { id: salonId },
+    data: { archivedAt: new Date(), archiveNote: "Archivé depuis la liste des salons", priorityDate: null },
+  });
+  revalidatePath("/salons");
+  revalidatePath("/dashboard");
+}
+
+/** Hard delete — activités, rappels et jobs partent en cascade avec le salon. */
+export async function deleteSalon(salonId: string) {
+  const user = await requireCurrentUser();
+  if (user.role !== "ADMIN") throw new Error("Suppression réservée aux admins");
+  await prisma.salon.delete({ where: { id: salonId } });
+  revalidatePath("/salons");
+  revalidatePath("/dashboard");
+}
+
 export async function logActivity(salonId: string, fd: FormData) {
   const me = await assertCanAccessSalon(salonId);
   const type = fd.get("type") as ActivityType;
