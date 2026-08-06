@@ -1,5 +1,3 @@
-import "server-only";
-
 import { FieldValue } from "firebase-admin/firestore";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { getDb } from "@/lib/firebase-admin";
