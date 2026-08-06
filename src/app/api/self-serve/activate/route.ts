@@ -5,7 +5,10 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getAuth, getDb } from "@/lib/firebase-admin";
 import { maybeSendMagicLinkEmail } from "@/lib/onboarding/magic-link";
-import { subscriptionMatchesActivation } from "@/lib/onboarding/pro-preview";
+import {
+  proPortalUrlForStripeMode,
+  subscriptionMatchesActivation,
+} from "@/lib/onboarding/pro-preview";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -123,6 +126,7 @@ export async function POST(request: NextRequest) {
       uid: parsed.data.uid,
       email,
       salonName,
+      proPortalUrl: proPortalUrlForStripeMode(parsed.data.isStripeLive),
     });
     if (!emailResult.sent) {
       await activationRef.set({

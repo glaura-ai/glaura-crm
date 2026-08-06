@@ -100,7 +100,12 @@ export function renderMagicLinkEmail(vars: { salonName?: string | null; magicLin
 }
 
 /** Mints a single-use sign-in token for `uid` and returns the /bienvenue URL. */
-export async function issueMagicSignInLink(uid: string, email: string, salonName: string | null): Promise<string> {
+export async function issueMagicSignInLink(
+  uid: string,
+  email: string,
+  salonName: string | null,
+  proPortalUrl?: string,
+): Promise<string> {
   const token = generateSignInToken();
   const now = Date.now();
   await getDb()
@@ -114,7 +119,8 @@ export async function issueMagicSignInLink(uid: string, email: string, salonName
       createdAt: Timestamp.fromMillis(now),
       expiresAt: Timestamp.fromMillis(now + TOKEN_TTL_MS),
     });
-  return `${config().proPortalUrl}/bienvenue?t=${token}`;
+  const portalUrl = (proPortalUrl?.trim() || config().proPortalUrl).replace(/\/+$/, "");
+  return `${portalUrl}/bienvenue?t=${token}`;
 }
 
 export type MaybeSendResult = { sent: boolean; skippedReason?: string; error?: string };
@@ -127,12 +133,18 @@ export async function maybeSendMagicLinkEmail(vars: {
   uid: string;
   email: string;
   salonName?: string | null;
+  proPortalUrl?: string;
 }): Promise<MaybeSendResult> {
   const gate = shouldSendMagicLink(vars.email);
   if (!gate.send) return { sent: false, skippedReason: gate.reason };
 
   try {
-    const magicLink = await issueMagicSignInLink(vars.uid, vars.email.trim(), vars.salonName ?? null);
+    const magicLink = await issueMagicSignInLink(
+      vars.uid,
+      vars.email.trim(),
+      vars.salonName ?? null,
+      vars.proPortalUrl,
+    );
     const { subject, html, text } = renderMagicLinkEmail({ salonName: vars.salonName, magicLink });
     await sendEmail({ to: vars.email.trim(), subject, text, html });
     return { sent: true };

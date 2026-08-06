@@ -2,6 +2,10 @@ import { createHash, createHmac } from "node:crypto";
 
 export type ProPlanCode = "basic" | "reservation";
 
+export function proPortalUrlForStripeMode(isLive: boolean): string {
+  return isLive ? "https://pro.glaura.ai" : "https://staging-pro.glaura.ai";
+}
+
 export function proPreviewToken(jobId: string, secret: string): string {
   if (secret.trim().length < 32) {
     throw new Error("PRO_PREVIEW_TOKEN_SECRET must contain at least 32 characters");

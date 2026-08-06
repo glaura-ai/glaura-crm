@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildProPreviewUrl,
   hashProPreviewToken,
+  proPortalUrlForStripeMode,
   proPreviewToken,
   renderProPreviewEmail,
   subscriptionMatchesActivation,
@@ -24,6 +25,11 @@ describe("/pro preview activation", () => {
       .toBe("https://glaura.ai/pro/preview/opaque_token");
     expect(buildProPreviewUrl("https://staging-1.glaura.ai", "opaque_token"))
       .toBe("https://staging-1.glaura.ai/pro/preview/opaque_token");
+  });
+
+  it("keeps welcome links in the Stripe environment that activated the salon", () => {
+    expect(proPortalUrlForStripeMode(true)).toBe("https://pro.glaura.ai");
+    expect(proPortalUrlForStripeMode(false)).toBe("https://staging-pro.glaura.ai");
   });
 
   it("renders email and plaintext alternatives with the salon preview", () => {
