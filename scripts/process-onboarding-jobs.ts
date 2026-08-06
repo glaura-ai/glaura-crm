@@ -45,6 +45,7 @@ type Pipeline = {
   duplicateEmailReason: typeof import("../src/lib/onboarding/create-account").duplicateEmailReason;
   encrypt: typeof import("../src/lib/crypto").encrypt;
   onboardSalonReels: typeof import("../src/lib/onboarding/reels").onboardSalonReels;
+  prepareAndNotifyProPreview: typeof import("../src/lib/onboarding/pro-preview-delivery").prepareAndNotifyProPreview;
 };
 
 // --- event helpers ---------------------------------------------------------
@@ -347,7 +348,45 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
       },
     });
 
+    const previewSalonName = overrides?.activationPreview && extract.salon.name?.trim()
+      ? extract.salon.name.trim()
+      : job.salon.name;
+    if (previewSalonName !== job.salon.name) {
+      await prisma.salon.update({
+        where: { id: job.salonId },
+        data: { name: previewSalonName },
+      });
+    }
+
     await finalizeJob(prisma, pipeline.encrypt, job.id, job.salonId, startedAt, result);
+
+    if (result.status === "success" && overrides?.activationPreview && result.ownerId) {
+      try {
+        const preview = await pipeline.prepareAndNotifyProPreview({
+          prisma,
+          jobId: job.id,
+          salonId: job.salonId,
+          uid: result.ownerId,
+          email: job.salon.contactEmail ?? result.email ?? "",
+          phone: job.salon.phone ?? "",
+          salonName: previewSalonName,
+          serviceCount: result.serviceCount,
+          planCode: overrides.planCode === "basic" ? "basic" : "reservation",
+          trialPeriodDays: overrides.trialPeriodDays ?? 14,
+        });
+        await emit("system", {
+          type: "preview_ready",
+          text: `aperçu prêt; email ${preview.emailQueued ? "en file" : "absent"}, SMS ${preview.smsSent ? "envoyé" : "non envoyé"}`,
+          data: { emailQueued: preview.emailQueued, smsSent: preview.smsSent },
+        });
+      } catch (error) {
+        await emit("stderr", {
+          type: "preview_notification_failed",
+          level: "error",
+          text: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
 
     // Supplementary: seed the salon's Instagram reels into its video feed.
     // Never affects job status — reels are best-effort and fail soft.
@@ -414,13 +453,14 @@ async function sleep(ms: number) {
 
 async function main() {
   const { prisma } = await import("../src/lib/db");
-  const [{ expandSalonPage }, { extractSalon }, createAccountMod, { encrypt }, { onboardSalonReels }] =
+  const [{ expandSalonPage }, { extractSalon }, createAccountMod, { encrypt }, { onboardSalonReels }, previewMod] =
     await Promise.all([
       import("../src/lib/onboarding/expand"),
       import("../src/lib/onboarding/extract"),
       import("../src/lib/onboarding/create-account"),
       import("../src/lib/crypto"),
       import("../src/lib/onboarding/reels"),
+      import("../src/lib/onboarding/pro-preview-delivery"),
     ]);
   const pipeline: Pipeline = {
     expandSalonPage,
@@ -430,6 +470,7 @@ async function main() {
     duplicateEmailReason: createAccountMod.duplicateEmailReason,
     encrypt,
     onboardSalonReels,
+    prepareAndNotifyProPreview: previewMod.prepareAndNotifyProPreview,
   };
 
   if (!loop) {
