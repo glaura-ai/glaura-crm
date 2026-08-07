@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { renderTemplate } from "@/lib/emailTemplates";
+import { isInlineHeroDataUri } from "@/lib/onboarding/pro-preview-image";
 
 export type ProPlanCode = "basic" | "reservation";
 
@@ -21,7 +22,7 @@ export type ProPreviewService = {
   durationMinutes?: number | null;
 };
 
-const FALLBACK_HERO_IMAGE = "https://glaura.ai/images/pro/network-rouge-paris.webp";
+export const PRO_PREVIEW_FALLBACK_HERO_IMAGE = "https://glaura.ai/images/pro/network-rouge-paris.webp";
 
 let previewTemplateBody: string | null = null;
 
@@ -137,11 +138,13 @@ function previewServices(input?: readonly ProPreviewService[]): [ProPreviewServi
 }
 
 function safeHeroImageUrl(value?: string | null): string {
+  const source = value?.trim() || PRO_PREVIEW_FALLBACK_HERO_IMAGE;
+  if (isInlineHeroDataUri(source)) return source;
   try {
-    const url = new URL(value?.trim() || FALLBACK_HERO_IMAGE);
-    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : FALLBACK_HERO_IMAGE;
+    const url = new URL(source);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : PRO_PREVIEW_FALLBACK_HERO_IMAGE;
   } catch {
-    return FALLBACK_HERO_IMAGE;
+    return PRO_PREVIEW_FALLBACK_HERO_IMAGE;
   }
 }
 

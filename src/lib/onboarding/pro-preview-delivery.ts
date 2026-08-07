@@ -1,15 +1,17 @@
 import { FieldValue } from "firebase-admin/firestore";
 import type { PrismaClient } from "@/generated/prisma/client";
-import { getDb } from "@/lib/firebase-admin";
+import { getDb, getMediaBucket } from "@/lib/firebase-admin";
 import {
   buildProPreviewUrl,
   hashProPreviewToken,
   loadProPreviewTemplate,
+  PRO_PREVIEW_FALLBACK_HERO_IMAGE,
   proPreviewToken,
   renderProPreviewEmail,
   type ProPlanCode,
   type ProPreviewService,
 } from "@/lib/onboarding/pro-preview";
+import { privateMediaObjectPath, toInlineHeroDataUri } from "@/lib/onboarding/pro-preview-image";
 
 const ACTIVATION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -57,6 +59,7 @@ export async function prepareAndNotifyProPreview(input: {
     : Array.isArray(salonImages) && typeof salonImages[0] === "string"
       ? salonImages[0]
       : null;
+  const emailHeroImageUrl = await emailSafeHeroImageSource(heroImageUrl);
   const profileAddress = profile.get("address");
 
   const activationRef = db.collection("proActivationSessions").doc(tokenHash);
@@ -112,7 +115,7 @@ export async function prepareAndNotifyProPreview(input: {
       salonName: input.salonName,
       serviceCount: input.serviceCount,
       instagramHandle: input.instagramHandle,
-      heroImageUrl,
+      heroImageUrl: emailHeroImageUrl,
       address: typeof profileAddress === "string" ? profileAddress : null,
       services: input.services,
     }, template);
@@ -143,6 +146,20 @@ export async function prepareAndNotifyProPreview(input: {
   }
 
   return { previewUrl, tokenHash, emailQueued, smsSent };
+}
+
+async function emailSafeHeroImageSource(source: string | null): Promise<string> {
+  if (!source) return PRO_PREVIEW_FALLBACK_HERO_IMAGE;
+  const objectPath = privateMediaObjectPath(source);
+  if (!objectPath) return source;
+  try {
+    const file = getMediaBucket().file(objectPath);
+    const [[content], [metadata]] = await Promise.all([file.download(), file.getMetadata()]);
+    return toInlineHeroDataUri(content, String(metadata.contentType || "image/jpeg"))
+      ?? PRO_PREVIEW_FALLBACK_HERO_IMAGE;
+  } catch {
+    return PRO_PREVIEW_FALLBACK_HERO_IMAGE;
+  }
 }
 
 async function sendPreviewSms(phone: string, salonName: string, previewUrl: string): Promise<boolean> {
