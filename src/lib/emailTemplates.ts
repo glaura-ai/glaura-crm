@@ -47,9 +47,11 @@ export interface TemplateVariable {
   hint?: string;
   /**
    * `salon` variables work in every template; `onboarding` ones only make sense
-   * on the HTML account emails, where the credentials and links exist.
+   * on the HTML account emails, where the credentials and links exist, and
+   * `transactional` ones on the HTML emails sent to a customer about one
+   * booking.
    */
-  scope: "salon" | "onboarding";
+  scope: "salon" | "onboarding" | "transactional";
 }
 
 /**
@@ -73,6 +75,12 @@ export const TEMPLATE_VARIABLES: readonly TemplateVariable[] = [
   { token: "{{lien_connexion}}", label: "Lien de connexion à usage unique", scope: "onboarding" },
   { token: "{{nombre_prestations}}", label: "Nombre de prestations importées", scope: "onboarding" },
   { token: "{{instagram_salon}}", label: "Compte Instagram vérifié", scope: "onboarding" },
+  { token: "{{customerName}}", label: "Prénom du client", hint: "porte son espace : écrire « Bonjour{{customerName}}, »", scope: "transactional" },
+  { token: "{{salonName}}", label: "Salon du rendez-vous", scope: "transactional" },
+  { token: "{{serviceName}}", label: "Prestation réservée", scope: "transactional" },
+  { token: "{{bookingDate}}", label: "Date du rendez-vous", scope: "transactional" },
+  { token: "{{bookingTime}}", label: "Heure du rendez-vous", scope: "transactional" },
+  { token: "{{refundAmountEuros}}", label: "Montant remboursé", hint: "en euros, sans le symbole", scope: "transactional" },
 ] as const;
 
 /** Matches any `{{token}}`, known or not, so typos can be reported. */

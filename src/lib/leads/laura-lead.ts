@@ -4,7 +4,6 @@
 // Request: the route stays a thin adapter (auth → parse → derive → persist),
 // and everything that decides *what* gets written lives here.
 
-import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { normalizeInstagramHandle } from "@/lib/instagram";
 import type { $Enums } from "@/generated/prisma/client";
@@ -92,20 +91,6 @@ export function notesFor(
     .join("\n");
 }
 
-/** Constant-time bearer check. Returns false when unconfigured, so a missing
- *  secret closes the endpoint instead of opening it. */
-export function isBearerAuthorized(
-  authorizationHeader: string | null | undefined,
-  secret: string | undefined,
-): boolean {
-  const expected = secret?.trim();
-  if (!expected) return false;
-  const header = authorizationHeader ?? "";
-  const presented = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-  if (!presented) return false;
-  const a = Buffer.from(presented);
-  const b = Buffer.from(expected);
-  // Length must match before timingSafeEqual, which throws on a mismatch.
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
+// Re-exported so the route and its tests keep importing the check from here,
+// while every service-to-service endpoint shares one implementation.
+export { isBearerAuthorized } from "@/lib/bearer-auth";
