@@ -452,6 +452,11 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
           salonName: previewSalonName,
           serviceCount: result.serviceCount,
           instagramHandle: job.salon.instagram,
+          services: extract.services.map((service) => ({
+            name: service.service_name,
+            price: service.service_price,
+            durationMinutes: service.duration_minutes,
+          })),
           planCode: overrides.planCode === "basic" ? "basic" : "reservation",
           trialPeriodDays: overrides.trialPeriodDays ?? 14,
           publicBaseUrl: overrides.publicBaseUrl ?? undefined,

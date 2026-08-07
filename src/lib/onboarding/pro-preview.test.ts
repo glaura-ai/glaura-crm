@@ -38,12 +38,27 @@ describe("/pro preview activation", () => {
       salonName: "Studio <Camille>",
       instagramHandle: "studio.camille",
       serviceCount: 8,
+      heroImageUrl: "https://cdn.glaura.ai/studio-camille.jpg",
+      address: "12 rue de Paris, 75001 Paris",
+      services: [
+        { name: "Coupe & Brushing", price: 65, durationMinutes: 60 },
+        { name: "Coloration", price: 90, durationMinutes: 90 },
+      ],
     });
     expect(email.subject).toContain("Studio <Camille>");
     expect(email.html).toContain("https://glaura.ai/pro/preview/token");
     expect(email.html).toContain("cid:glaura-logo");
     expect(email.html).toContain("APERÇU PRÊT");
     expect(email.html).toContain("Studio &lt;Camille&gt;");
+    expect(email.html).toContain("https://cdn.glaura.ai/studio-camille.jpg");
+    expect(email.html).toContain("12 rue de Paris, 75001 Paris");
+    expect(email.html).toContain("Les plus réservées");
+    expect(email.html).toContain("Coupe &amp; Brushing");
+    expect(email.html).toContain("65 €");
+    expect(email.html).toContain("1 h");
+    expect(email.html).toContain("Coloration");
+    expect(email.html).toContain("1 h 30");
+    expect(email.html).toContain("Horaires d&#39;ouverture");
     expect(email.html).not.toContain("{{");
     expect(email.text).toContain("8 prestations");
   });
