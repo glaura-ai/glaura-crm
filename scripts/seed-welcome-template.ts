@@ -25,11 +25,12 @@ const onlyKey = process.argv.find((arg) => arg.startsWith("--only="))?.slice("--
 
 async function main() {
   const { prisma } = await import("../src/lib/db");
-  const [welcome, preview, activation, refund] = await Promise.all([
+  const [welcome, preview, activation, refund, trialEnding] = await Promise.all([
     import("../src/lib/onboarding/welcome-email"),
     import("../src/lib/onboarding/pro-preview"),
     import("../src/lib/onboarding/magic-link"),
     import("../src/lib/transactional/booking-refund"),
+    import("../src/lib/transactional/trial-ending"),
   ]);
   const definitions = [
     {
@@ -51,6 +52,11 @@ async function main() {
       key: refund.BOOKING_REFUND_TEMPLATE_KEY,
       label: "Réservation remboursée (client)",
       template: refund.bundledBookingRefundTemplate(),
+    },
+    {
+      key: trialEnding.PRO_TRIAL_ENDING_TEMPLATE_KEY,
+      label: "Fin d’essai dans 3 jours (/pro)",
+      template: trialEnding.bundledTrialEndingTemplate(),
     },
   ];
   const selectedDefinitions = onlyKey

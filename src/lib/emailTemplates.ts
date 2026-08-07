@@ -92,6 +92,9 @@ export const TEMPLATE_VARIABLES: readonly TemplateVariable[] = [
   { token: "{{bookingDate}}", label: "Date du rendez-vous", scope: "transactional" },
   { token: "{{bookingTime}}", label: "Heure du rendez-vous", scope: "transactional" },
   { token: "{{refundAmountEuros}}", label: "Montant remboursé", hint: "en euros, sans le symbole", scope: "transactional" },
+  { token: "{{trialEndDate}}", label: "Date de fin d’essai", scope: "transactional" },
+  { token: "{{planName}}", label: "Nom de l’abonnement", scope: "transactional" },
+  { token: "{{billingUrl}}", label: "Lien de gestion de l’abonnement", scope: "transactional" },
 ] as const;
 
 /** Matches any `{{token}}`, known or not, so typos can be reported. */
