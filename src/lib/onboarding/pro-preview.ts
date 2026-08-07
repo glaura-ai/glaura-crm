@@ -15,6 +15,14 @@ export type ProPreviewTemplate = {
   source: "database" | "file";
 };
 
+export type ProPreviewService = {
+  name: string;
+  price: number;
+  durationMinutes?: number | null;
+};
+
+const FALLBACK_HERO_IMAGE = "https://glaura.ai/images/pro/network-rouge-paris.webp";
+
 let previewTemplateBody: string | null = null;
 
 export function bundledProPreviewTemplate(): ProPreviewTemplate {
@@ -71,14 +79,29 @@ export function renderProPreviewEmail(input: {
   salonName: string;
   serviceCount: number;
   instagramHandle?: string | null;
+  heroImageUrl?: string | null;
+  address?: string | null;
+  services?: readonly ProPreviewService[];
 }, template: ProPreviewTemplate = bundledProPreviewTemplate()) {
   const salon = input.salonName.trim() || "votre salon";
   const count = Math.max(0, Math.floor(input.serviceCount));
   const instagram = (input.instagramHandle ?? "").trim().replace(/^@+/, "");
+  const services = previewServices(input.services);
   const values = {
     "{{lien_apercu}}": input.previewUrl,
     "{{nombre_prestations}}": String(count),
     "{{instagram_salon}}": instagram,
+    "{{image_salon}}": safeHeroImageUrl(input.heroImageUrl),
+    "{{adresse_salon}}": input.address?.trim() || "Votre salon",
+    "{{prestation_1}}": services[0].name,
+    "{{prix_prestation_1}}": formatPrice(services[0].price),
+    "{{duree_prestation_1}}": formatDuration(services[0].durationMinutes),
+    "{{prestation_2}}": services[1].name,
+    "{{prix_prestation_2}}": formatPrice(services[1].price),
+    "{{duree_prestation_2}}": formatDuration(services[1].durationMinutes),
+    "{{prestation_3}}": services[2].name,
+    "{{prix_prestation_3}}": formatPrice(services[2].price),
+    "{{duree_prestation_3}}": formatDuration(services[2].durationMinutes),
   };
   const salonDraft = { name: salon, contactName: null, bookingUrl: null };
   const subject = renderTemplate(template.subject, salonDraft, { format: "TEXT", values });
@@ -90,6 +113,51 @@ export function renderProPreviewEmail(input: {
   ].join("\n\n");
   const html = renderTemplate(template.body, salonDraft, { format: "HTML", values });
   return { subject, text, html };
+}
+
+function previewServices(input?: readonly ProPreviewService[]): [ProPreviewService, ProPreviewService, ProPreviewService] {
+  const provided = (input ?? [])
+    .filter((service) => service.name.trim())
+    .slice(0, 3)
+    .map((service) => ({
+      name: service.name.trim(),
+      price: Number.isFinite(service.price) ? Math.max(0, service.price) : 0,
+      durationMinutes: service.durationMinutes,
+    }));
+  const fallbacks: ProPreviewService[] = [
+    { name: "Vos prestations", price: 0, durationMinutes: null },
+    { name: "Réservation en ligne", price: 0, durationMinutes: null },
+    { name: "Catalogue personnalisé", price: 0, durationMinutes: null },
+  ];
+  return [0, 1, 2].map((index) => provided[index] ?? fallbacks[index]) as [
+    ProPreviewService,
+    ProPreviewService,
+    ProPreviewService,
+  ];
+}
+
+function safeHeroImageUrl(value?: string | null): string {
+  try {
+    const url = new URL(value?.trim() || FALLBACK_HERO_IMAGE);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : FALLBACK_HERO_IMAGE;
+  } catch {
+    return FALLBACK_HERO_IMAGE;
+  }
+}
+
+function formatPrice(price: number): string {
+  if (!(price > 0)) return "Sur devis";
+  const amount = Number.isInteger(price) ? String(price) : price.toFixed(2).replace(".", ",");
+  return `${amount} €`;
+}
+
+function formatDuration(minutes?: number | null): string {
+  if (!minutes || minutes <= 0) return "Réservable en ligne";
+  const rounded = Math.round(minutes);
+  const hours = Math.floor(rounded / 60);
+  const remainder = rounded % 60;
+  if (hours === 0) return `${remainder} min`;
+  return remainder === 0 ? `${hours} h` : `${hours} h ${remainder}`;
 }
 
 export function subscriptionMatchesActivation(

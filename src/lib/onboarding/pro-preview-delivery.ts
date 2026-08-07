@@ -8,6 +8,7 @@ import {
   proPreviewToken,
   renderProPreviewEmail,
   type ProPlanCode,
+  type ProPreviewService,
 } from "@/lib/onboarding/pro-preview";
 
 const ACTIVATION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -22,6 +23,7 @@ export async function prepareAndNotifyProPreview(input: {
   salonName: string;
   serviceCount: number;
   instagramHandle?: string | null;
+  services?: readonly ProPreviewService[];
   planCode: ProPlanCode;
   trialPeriodDays: number;
   publicBaseUrl?: "https://glaura.ai" | "https://staging-1.glaura.ai";
@@ -48,6 +50,14 @@ export async function prepareAndNotifyProPreview(input: {
   const planCode: ProPlanCode = profilePlanCode === "basic" || profilePlanCode === "reservation" ?
     profilePlanCode : input.planCode;
   const trialPeriodDays = planCode === "basic" ? 7 : 14;
+  const profileImg = profile.get("profileImg");
+  const salonImages = profile.get("salon_images");
+  const heroImageUrl = typeof profileImg === "string" && profileImg.trim()
+    ? profileImg.trim()
+    : Array.isArray(salonImages) && typeof salonImages[0] === "string"
+      ? salonImages[0]
+      : null;
+  const profileAddress = profile.get("address");
 
   const activationRef = db.collection("proActivationSessions").doc(tokenHash);
   const existing = await activationRef.get();
@@ -102,6 +112,9 @@ export async function prepareAndNotifyProPreview(input: {
       salonName: input.salonName,
       serviceCount: input.serviceCount,
       instagramHandle: input.instagramHandle,
+      heroImageUrl,
+      address: typeof profileAddress === "string" ? profileAddress : null,
+      services: input.services,
     }, template);
     await input.prisma.emailJob.create({
       data: {

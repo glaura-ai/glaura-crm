@@ -12,6 +12,8 @@
  *
  *   npm run seed:system-email-templates            # create if missing
  *   npm run seed:system-email-templates -- --force # overwrite bundled copies
+ *   npm run seed:system-email-templates -- --force --only=PRO_PREVIEW_READY
+ *                                                   # overwrite one template
  */
 
 import { loadEnvConfig } from "@next/env";
@@ -19,6 +21,7 @@ import { loadEnvConfig } from "@next/env";
 loadEnvConfig(process.cwd());
 
 const force = process.argv.includes("--force");
+const onlyKey = process.argv.find((arg) => arg.startsWith("--only="))?.slice("--only=".length).trim();
 
 async function main() {
   const { prisma } = await import("../src/lib/db");
@@ -50,9 +53,15 @@ async function main() {
       template: refund.bundledBookingRefundTemplate(),
     },
   ];
+  const selectedDefinitions = onlyKey
+    ? definitions.filter((definition) => definition.key === onlyKey)
+    : definitions;
+  if (selectedDefinitions.length === 0) {
+    throw new Error(`Unknown system email template key: ${onlyKey}`);
+  }
 
   let nextOrder = (await prisma.emailTemplate.aggregate({ _max: { sortOrder: true } }))._max.sortOrder ?? 0;
-  for (const definition of definitions) {
+  for (const definition of selectedDefinitions) {
     const existing = await prisma.emailTemplate.findUnique({
       where: { key: definition.key },
       select: { id: true, updatedAt: true },
