@@ -21,6 +21,13 @@ the server.
     is rejected with 401** (fails closed by design), and the site then logs
     `laura_lead_crm_failed` and keeps only the Airtable copy — so set it before
     or with the deploy that first ships that endpoint
+  - `TRANSACTIONAL_EMAIL_SECRET` — shared secret for
+    `POST /api/transactional/booking-refund`, called by the Cloud Function
+    `adminRefundBooking` after an admin refund. Must match
+    `CRM_TRANSACTIONAL_EMAIL_SECRET` in `goglow-firebase/functions/.env`.
+    **Unset means the route answers 503** (fails closed); the refund itself
+    still succeeds on the functions side and reports
+    `emailSkippedReason: email_send_failed`
 - Postgres `glaura_crm` runs on the VPS **host**, not in Docker — hence `network_mode: host`
 - Web listens on `PORT=3102`
 - `/opt/glaura/glaura-crm` also holds a stale git checkout (unrelated to deploys, ignore it)
@@ -79,7 +86,20 @@ docker compose up -d'
 `up -d` recreates only what actually changed, and `config --quiet` fails fast on
 a malformed file instead of half-rolling the stack.
 
-### 5. Verify
+### 5. Seed system email templates
+
+```bash
+ssh root@204.168.167.79 'cd /opt/glaura/glaura-crm && docker compose run --rm --no-deps web npm run seed:system-email-templates'
+```
+
+Publishes any bundled email template (welcome, pro preview/activation,
+booking-refund, …) that is missing from /modeles. Idempotent and
+create-if-missing: a row the team already edited in /modeles is never
+overwritten (that requires an explicit `-- --force`, which you should not run
+during a routine deploy). Safe and cheap on every deploy — skipping it is what
+leaves a new template's emails silently unsendable.
+
+### 6. Verify
 
 ```bash
 ssh root@204.168.167.79 'sleep 25
