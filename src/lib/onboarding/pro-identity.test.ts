@@ -60,4 +60,17 @@ describe("/pro salon identity verification", () => {
     expect(isProIdentityTestBypassAllowed("any-account", "*")).toBe(false);
     expect(isProIdentityTestBypassAllowed("any-account", "")).toBe(false);
   });
+
+  it("fully accepts an unrelated salon when the verified handle is test-allowlisted", () => {
+    const result = evaluateProSalonIdentity({
+      bookingSalonName: "IBE - International Beauty Expert",
+      bookingUrl: "https://www.planity.com/international-beauty-expert-75016-paris",
+      instagramUsername: "gg_pyvalone",
+      instagramDisplayName: "Py Valone",
+    }, { bypassAllChecks: true });
+
+    expect(result.status).toBe("verified");
+    expect(result.score).toBe(result.requiredScore);
+    expect(result.signals).toEqual(["test_allowlist"]);
+  });
 });
