@@ -22,10 +22,11 @@ const force = process.argv.includes("--force");
 
 async function main() {
   const { prisma } = await import("../src/lib/db");
-  const [welcome, preview, activation] = await Promise.all([
+  const [welcome, preview, activation, refund] = await Promise.all([
     import("../src/lib/onboarding/welcome-email"),
     import("../src/lib/onboarding/pro-preview"),
     import("../src/lib/onboarding/magic-link"),
+    import("../src/lib/transactional/booking-refund"),
   ]);
   const definitions = [
     {
@@ -42,6 +43,11 @@ async function main() {
       key: activation.PRO_ACTIVATION_READY_TEMPLATE_KEY,
       label: "Compte activé (/pro)",
       template: activation.bundledActivationReadyTemplate(),
+    },
+    {
+      key: refund.BOOKING_REFUND_TEMPLATE_KEY,
+      label: "Réservation remboursée (client)",
+      template: refund.bundledBookingRefundTemplate(),
     },
   ];
 
