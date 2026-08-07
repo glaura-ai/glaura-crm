@@ -42,4 +42,19 @@ describe("verified booking-page claims", () => {
       data: { bookingUrlNormalized: "planity.com/studio" },
     });
   });
+
+  it("skips an existing booking-page claim for an explicit test bypass", async () => {
+    const { prisma, update } = fakePrisma({ currentConflict: { id: "salon-existing" } });
+    const result = await claimProBookingUrl(
+      prisma,
+      "salon-test",
+      "planity.com/studio",
+      { bypass: true },
+    );
+
+    expect(result).toEqual({ claimed: true, bypassed: true });
+    expect(update).not.toHaveBeenCalled();
+    expect(prisma.salon.findFirst).not.toHaveBeenCalled();
+    expect(prisma.salon.findMany).not.toHaveBeenCalled();
+  });
 });

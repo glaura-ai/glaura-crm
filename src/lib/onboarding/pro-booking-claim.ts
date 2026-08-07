@@ -2,7 +2,7 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import { normalizeBookingClaim } from "./pro-identity";
 
 export type BookingClaimResult =
-  | { claimed: true }
+  | { claimed: true; bypassed?: true }
   | { claimed: false; conflictSalonId: string | null };
 
 /**
@@ -14,7 +14,9 @@ export async function claimProBookingUrl(
   prisma: PrismaClient,
   salonId: string,
   bookingClaim: string | null,
+  options: { bypass?: boolean } = {},
 ): Promise<BookingClaimResult> {
+  if (options.bypass) return { claimed: true, bypassed: true };
   if (!bookingClaim) return { claimed: false, conflictSalonId: null };
 
   const currentConflict = await prisma.salon.findFirst({

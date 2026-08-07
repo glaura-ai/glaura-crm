@@ -335,28 +335,23 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
     // catalogue or issuing a private preview/Stripe link.
     if (overrides?.activationPreview && overrides.targetUid) {
       const verifiedInstagramHandle = overrides.verifiedInstagramHandle ?? job.salon.instagram ?? "";
+      const testBypass = pipeline.isProIdentityTestBypassAllowed(
+        verifiedInstagramHandle,
+        process.env.PRO_IDENTITY_TEST_BYPASS_HANDLES,
+      );
       let identity = pipeline.evaluateProSalonIdentity({
         bookingSalonName: extract.salon.name,
         bookingUrl: sourceUrl,
         instagramUsername: verifiedInstagramHandle,
         instagramDisplayName: overrides.verifiedInstagramDisplayName,
-      });
-      if (
-        identity.status === "review_required" &&
-        pipeline.isProIdentityTestBypassAllowed(
-          verifiedInstagramHandle,
-          process.env.PRO_IDENTITY_TEST_BYPASS_HANDLES,
-        )
-      ) {
-        identity = {
-          ...identity,
-          status: "verified",
-          score: identity.requiredScore,
-          signals: [...identity.signals, "test_allowlist"],
-        };
-      }
+      }, { bypassAllChecks: testBypass });
       if (identity.status === "verified") {
-        const claim = await pipeline.claimProBookingUrl(prisma, job.salonId, identity.bookingClaim);
+        const claim = await pipeline.claimProBookingUrl(
+          prisma,
+          job.salonId,
+          identity.bookingClaim,
+          { bypass: testBypass },
+        );
         if (!claim.claimed) {
           identity = {
             ...identity,
