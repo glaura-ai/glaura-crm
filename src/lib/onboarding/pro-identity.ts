@@ -2,6 +2,7 @@ export type ProIdentitySignal =
   | "name_exact"
   | "name_tokens"
   | "name_acronym"
+  | "test_allowlist"
   | "booking_claim_conflict";
 
 export type ProIdentityResult = {
@@ -27,6 +28,27 @@ const ACRONYM_IGNORED_TOKENS = new Set([
   "and", "by", "chez", "de", "des", "du", "et", "la", "le", "les",
   "paris", "salon", "studio",
 ]);
+
+/**
+ * Server-side testing escape hatch. The value is a comma/space-separated list
+ * of exact Instagram handles; deliberately no wildcard is supported. Keeping
+ * this decision in the worker means a browser cannot forge the bypass flag.
+ */
+export function isProIdentityTestBypassAllowed(
+  instagramUsername: string | null | undefined,
+  rawAllowlist: string | null | undefined,
+): boolean {
+  const username = normalizeInstagramHandle(instagramUsername);
+  if (!username) return false;
+
+  const allowed = new Set(
+    (rawAllowlist ?? "")
+      .split(/[\s,;]+/)
+      .map(normalizeInstagramHandle)
+      .filter((handle) => handle && handle !== "*"),
+  );
+  return allowed.has(username);
+}
 
 /** Canonical claim shared by URL deduplication and Instagram-link matching. */
 export function normalizeBookingClaim(value: string | null | undefined): string | null {
@@ -104,6 +126,10 @@ function normalizeName(value: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "");
+}
+
+function normalizeInstagramHandle(value: string | null | undefined): string {
+  return (value ?? "").trim().replace(/^@+/, "").toLowerCase();
 }
 
 function tokens(value: string): string[] {

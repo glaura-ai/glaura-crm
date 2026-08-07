@@ -47,6 +47,7 @@ type Pipeline = {
   onboardSalonReels: typeof import("../src/lib/onboarding/reels").onboardSalonReels;
   prepareAndNotifyProPreview: typeof import("../src/lib/onboarding/pro-preview-delivery").prepareAndNotifyProPreview;
   evaluateProSalonIdentity: typeof import("../src/lib/onboarding/pro-identity").evaluateProSalonIdentity;
+  isProIdentityTestBypassAllowed: typeof import("../src/lib/onboarding/pro-identity").isProIdentityTestBypassAllowed;
   holdProProfileForIdentityReview: typeof import("../src/lib/onboarding/pro-identity-review").holdProProfileForIdentityReview;
   claimProBookingUrl: typeof import("../src/lib/onboarding/pro-booking-claim").claimProBookingUrl;
 };
@@ -333,12 +334,27 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
     // Meta's identity against the freshly extracted salon before writing any
     // catalogue or issuing a private preview/Stripe link.
     if (overrides?.activationPreview && overrides.targetUid) {
+      const verifiedInstagramHandle = overrides.verifiedInstagramHandle ?? job.salon.instagram ?? "";
       let identity = pipeline.evaluateProSalonIdentity({
         bookingSalonName: extract.salon.name,
         bookingUrl: sourceUrl,
-        instagramUsername: overrides.verifiedInstagramHandle ?? job.salon.instagram ?? "",
+        instagramUsername: verifiedInstagramHandle,
         instagramDisplayName: overrides.verifiedInstagramDisplayName,
       });
+      if (
+        identity.status === "review_required" &&
+        pipeline.isProIdentityTestBypassAllowed(
+          verifiedInstagramHandle,
+          process.env.PRO_IDENTITY_TEST_BYPASS_HANDLES,
+        )
+      ) {
+        identity = {
+          ...identity,
+          status: "verified",
+          score: identity.requiredScore,
+          signals: [...identity.signals, "test_allowlist"],
+        };
+      }
       if (identity.status === "verified") {
         const claim = await pipeline.claimProBookingUrl(prisma, job.salonId, identity.bookingClaim);
         if (!claim.claimed) {
@@ -546,6 +562,7 @@ async function main() {
     onboardSalonReels,
     prepareAndNotifyProPreview: previewMod.prepareAndNotifyProPreview,
     evaluateProSalonIdentity: identityMod.evaluateProSalonIdentity,
+    isProIdentityTestBypassAllowed: identityMod.isProIdentityTestBypassAllowed,
     holdProProfileForIdentityReview: identityReviewMod.holdProProfileForIdentityReview,
     claimProBookingUrl: bookingClaimMod.claimProBookingUrl,
   };

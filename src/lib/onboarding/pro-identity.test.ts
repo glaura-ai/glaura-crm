@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { evaluateProSalonIdentity, normalizeBookingClaim } from "./pro-identity";
+import {
+  evaluateProSalonIdentity,
+  isProIdentityTestBypassAllowed,
+  normalizeBookingClaim,
+} from "./pro-identity";
 
 describe("/pro salon identity verification", () => {
   it("accepts a distinctive salon-name match after normalization", () => {
@@ -41,5 +45,19 @@ describe("/pro salon identity verification", () => {
   it("canonicalizes booking links for exclusive salon claims", () => {
     expect(normalizeBookingClaim("https://WWW.Planity.com/le-salon/?utm_source=ig#cta"))
       .toBe("planity.com/le-salon");
+  });
+
+  it("allows only explicit Instagram handles in the test bypass allowlist", () => {
+    const allowlist = "glaura.test, @owner_demo\nibe.testing";
+
+    expect(isProIdentityTestBypassAllowed("@OWNER_DEMO", allowlist)).toBe(true);
+    expect(isProIdentityTestBypassAllowed("ibe.testing", allowlist)).toBe(true);
+    expect(isProIdentityTestBypassAllowed("competitor", allowlist)).toBe(false);
+    expect(isProIdentityTestBypassAllowed("glaura.test.fake", allowlist)).toBe(false);
+  });
+
+  it("does not support a wildcard identity bypass", () => {
+    expect(isProIdentityTestBypassAllowed("any-account", "*")).toBe(false);
+    expect(isProIdentityTestBypassAllowed("any-account", "")).toBe(false);
   });
 });
