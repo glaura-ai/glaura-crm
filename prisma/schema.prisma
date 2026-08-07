@@ -111,6 +111,7 @@ enum OnboardingStatus {
   DONE
   FAILED
   ALREADY_ONBOARDED
+  REVIEW_REQUIRED
 }
 
 enum EmailJobStatus {
@@ -160,6 +161,9 @@ model Salon {
   instagram          String?
   bookingTool        BookingTool @default(NONE)
   bookingUrl         String?
+  // Canonical host/path claimed only after /pro identity verification. Unique
+  // prevents a second account from activating the same external salon page.
+  bookingUrlNormalized String? @unique
   rating             Float?
   status             SalonStatus @default(A_VISITER)
   notes              String?     @db.Text

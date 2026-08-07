@@ -35,11 +35,16 @@ describe("/pro preview activation", () => {
   it("renders email and plaintext alternatives with the salon preview", () => {
     const email = renderProPreviewEmail({
       previewUrl: "https://glaura.ai/pro/preview/token",
-      salonName: "Studio Camille",
+      salonName: "Studio <Camille>",
+      instagramHandle: "studio.camille",
       serviceCount: 8,
     });
-    expect(email.subject).toContain("Studio Camille");
+    expect(email.subject).toContain("Studio <Camille>");
     expect(email.html).toContain("https://glaura.ai/pro/preview/token");
+    expect(email.html).toContain("cid:glaura-logo");
+    expect(email.html).toContain("APERÇU PRÊT");
+    expect(email.html).toContain("Studio &lt;Camille&gt;");
+    expect(email.html).not.toContain("{{");
     expect(email.text).toContain("8 prestations");
   });
 

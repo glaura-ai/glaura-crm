@@ -11,6 +11,7 @@ const statusStyle = {
   DONE: "bg-emerald-50 text-emerald-800 ring-emerald-200",
   FAILED: "bg-rose-50 text-rose-800 ring-rose-200",
   ALREADY_ONBOARDED: "bg-violet-50 text-violet-800 ring-violet-200",
+  REVIEW_REQUIRED: "bg-amber-50 text-amber-800 ring-amber-200",
 } as const;
 const statusLabel = {
   QUEUED: "En file",
@@ -18,6 +19,7 @@ const statusLabel = {
   DONE: "Termine",
   FAILED: "Echec",
   ALREADY_ONBOARDED: "Deja pret",
+  REVIEW_REQUIRED: "À vérifier",
 } as const;
 
 export default async function OnboardingMonitorPage({

@@ -32,6 +32,12 @@ const SAMPLE_ONBOARDING = onboardingValues({
   instagramUrl: "https://www.instagram.com/glaura.app/",
   supportEmail: "support@glaura.fr",
 });
+Object.assign(SAMPLE_ONBOARDING, {
+  "{{lien_apercu}}": "https://glaura.ai/pro/preview/exemple",
+  "{{lien_connexion}}": "https://pro.glaura.ai/bienvenue?t=exemple",
+  "{{nombre_prestations}}": "18",
+  "{{instagram_salon}}": "salon.demo",
+});
 
 type Props = {
   action: (fd: FormData) => void | Promise<void>;

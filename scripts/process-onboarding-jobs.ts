@@ -46,6 +46,9 @@ type Pipeline = {
   encrypt: typeof import("../src/lib/crypto").encrypt;
   onboardSalonReels: typeof import("../src/lib/onboarding/reels").onboardSalonReels;
   prepareAndNotifyProPreview: typeof import("../src/lib/onboarding/pro-preview-delivery").prepareAndNotifyProPreview;
+  evaluateProSalonIdentity: typeof import("../src/lib/onboarding/pro-identity").evaluateProSalonIdentity;
+  holdProProfileForIdentityReview: typeof import("../src/lib/onboarding/pro-identity-review").holdProProfileForIdentityReview;
+  claimProBookingUrl: typeof import("../src/lib/onboarding/pro-booking-claim").claimProBookingUrl;
 };
 
 // --- event helpers ---------------------------------------------------------
@@ -325,6 +328,72 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
       },
     });
 
+    // A verified OAuth handle proves control of that Instagram account, not
+    // ownership of the business behind an arbitrary booking URL. Cross-check
+    // Meta's identity against the freshly extracted salon before writing any
+    // catalogue or issuing a private preview/Stripe link.
+    if (overrides?.activationPreview && overrides.targetUid) {
+      let identity = pipeline.evaluateProSalonIdentity({
+        bookingSalonName: extract.salon.name,
+        bookingUrl: sourceUrl,
+        instagramUsername: overrides.verifiedInstagramHandle ?? job.salon.instagram ?? "",
+        instagramDisplayName: overrides.verifiedInstagramDisplayName,
+      });
+      if (identity.status === "verified") {
+        const claim = await pipeline.claimProBookingUrl(prisma, job.salonId, identity.bookingClaim);
+        if (!claim.claimed) {
+          identity = {
+            ...identity,
+            status: "review_required",
+            signals: [...identity.signals, "booking_claim_conflict"],
+          };
+        }
+      }
+      await emit("system", {
+        type: "identity_checked",
+        subtype: identity.status,
+        level: identity.status === "verified" ? undefined : "warn",
+        text: identity.status === "verified"
+          ? `identité salon confirmée (${identity.signals.join(", ")})`
+          : `vérification manuelle requise (score ${identity.score}/${identity.requiredScore})`,
+        data: identity,
+      });
+
+      if (identity.status === "review_required") {
+        const finishedAt = new Date();
+        await Promise.all([
+          pipeline.holdProProfileForIdentityReview(overrides.targetUid, identity),
+          prisma.salon.update({
+            where: { id: job.salonId },
+            data: {
+              name: extract.salon.name,
+              accountStatusLabel: "identity_review",
+              bookingUrlNormalized: null,
+            },
+          }),
+          prisma.onboardingJob.update({
+            where: { id: job.id },
+            data: {
+              status: "REVIEW_REQUIRED",
+              finishedAt,
+              durationMs: finishedAt.getTime() - startedAt.getTime(),
+              exitCode: 0,
+              accountUid: overrides.targetUid,
+              warnings: [{ code: "identity_review_required", ...identity }],
+              error: null,
+            },
+          }),
+        ]);
+        await emit("system", {
+          type: "job_exited",
+          subtype: "review_required",
+          data: { exitCode: 0, reason: "identity_review_required" },
+        });
+        console.log(`onboarded ${job.id} (${sourceUrl}): identity review required`);
+        return;
+      }
+    }
+
     // 3. Create the salon account (Auth + userProfile + services + enrichment).
     const result = await pipeline.createDisabledSalonAccount(extract, buildHints(job.salon), {
       url: sourceUrl,
@@ -371,6 +440,7 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
           phone: job.salon.phone ?? "",
           salonName: previewSalonName,
           serviceCount: result.serviceCount,
+          instagramHandle: job.salon.instagram,
           planCode: overrides.planCode === "basic" ? "basic" : "reservation",
           trialPeriodDays: overrides.trialPeriodDays ?? 14,
           publicBaseUrl: overrides.publicBaseUrl ?? undefined,
@@ -454,7 +524,7 @@ async function sleep(ms: number) {
 
 async function main() {
   const { prisma } = await import("../src/lib/db");
-  const [{ expandSalonPage }, { extractSalon }, createAccountMod, { encrypt }, { onboardSalonReels }, previewMod] =
+  const [{ expandSalonPage }, { extractSalon }, createAccountMod, { encrypt }, { onboardSalonReels }, previewMod, identityMod, identityReviewMod, bookingClaimMod] =
     await Promise.all([
       import("../src/lib/onboarding/expand"),
       import("../src/lib/onboarding/extract"),
@@ -462,6 +532,9 @@ async function main() {
       import("../src/lib/crypto"),
       import("../src/lib/onboarding/reels"),
       import("../src/lib/onboarding/pro-preview-delivery"),
+      import("../src/lib/onboarding/pro-identity"),
+      import("../src/lib/onboarding/pro-identity-review"),
+      import("../src/lib/onboarding/pro-booking-claim"),
     ]);
   const pipeline: Pipeline = {
     expandSalonPage,
@@ -472,6 +545,9 @@ async function main() {
     encrypt,
     onboardSalonReels,
     prepareAndNotifyProPreview: previewMod.prepareAndNotifyProPreview,
+    evaluateProSalonIdentity: identityMod.evaluateProSalonIdentity,
+    holdProProfileForIdentityReview: identityReviewMod.holdProProfileForIdentityReview,
+    claimProBookingUrl: bookingClaimMod.claimProBookingUrl,
   };
 
   if (!loop) {

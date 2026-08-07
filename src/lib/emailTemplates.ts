@@ -69,6 +69,10 @@ export const TEMPLATE_VARIABLES: readonly TemplateVariable[] = [
   { token: "{{lien_site}}", label: "Lien site Glaura", scope: "onboarding" },
   { token: "{{lien_instagram}}", label: "Lien Instagram Glaura", scope: "onboarding" },
   { token: "{{email_support}}", label: "Email support", scope: "onboarding" },
+  { token: "{{lien_apercu}}", label: "Lien vers l’aperçu /pro", scope: "onboarding" },
+  { token: "{{lien_connexion}}", label: "Lien de connexion à usage unique", scope: "onboarding" },
+  { token: "{{nombre_prestations}}", label: "Nombre de prestations importées", scope: "onboarding" },
+  { token: "{{instagram_salon}}", label: "Compte Instagram vérifié", scope: "onboarding" },
 ] as const;
 
 /** Matches any `{{token}}`, known or not, so typos can be reported. */

@@ -32,6 +32,7 @@ const onboardingStatusLabel = {
   DONE: "Compte préparé",
   FAILED: "Échec",
   ALREADY_ONBOARDED: "Déjà préparé",
+  REVIEW_REQUIRED: "À vérifier",
 } as const;
 const onboardingStatusStyle = {
   QUEUED: "bg-amber-50 text-amber-800 ring-amber-200",
@@ -39,6 +40,7 @@ const onboardingStatusStyle = {
   DONE: "bg-emerald-50 text-emerald-800 ring-emerald-200",
   FAILED: "bg-rose-50 text-rose-800 ring-rose-200",
   ALREADY_ONBOARDED: "bg-violet-50 text-violet-800 ring-violet-200",
+  REVIEW_REQUIRED: "bg-amber-50 text-amber-800 ring-amber-200",
 } as const;
 const emailStatusLabel = {
   QUEUED: "En file",
