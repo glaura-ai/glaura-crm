@@ -4,6 +4,7 @@ import { getDb } from "@/lib/firebase-admin";
 import {
   buildProPreviewUrl,
   hashProPreviewToken,
+  loadProPreviewTemplate,
   proPreviewToken,
   renderProPreviewEmail,
   type ProPlanCode,
@@ -20,6 +21,7 @@ export async function prepareAndNotifyProPreview(input: {
   phone: string;
   salonName: string;
   serviceCount: number;
+  instagramHandle?: string | null;
   planCode: ProPlanCode;
   trialPeriodDays: number;
   publicBaseUrl?: "https://glaura.ai" | "https://staging-1.glaura.ai";
@@ -94,16 +96,19 @@ export async function prepareAndNotifyProPreview(input: {
   });
   let emailQueued = Boolean(existingEmail);
   if (!existingEmail && input.email.trim()) {
+    const template = await loadProPreviewTemplate(input.prisma);
     const email = renderProPreviewEmail({
       previewUrl,
       salonName: input.salonName,
       serviceCount: input.serviceCount,
-    });
+      instagramHandle: input.instagramHandle,
+    }, template);
     await input.prisma.emailJob.create({
       data: {
         salonId: input.salonId,
         to: input.email.trim(),
         from: process.env.SMTP_FROM || "Glaura <support@glaura.fr>",
+        templateId: template.id,
         templateKey,
         subject: email.subject,
         format: "HTML",

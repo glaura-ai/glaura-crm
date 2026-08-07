@@ -79,6 +79,10 @@ export type OnboardingOverrides = {
   trialPeriodDays?: number | null;
   /** Public website origin captured by the portal before OAuth. */
   publicBaseUrl?: "https://glaura.ai" | "https://staging-1.glaura.ai" | null;
+  /** Meta-returned fields for the Instagram account that completed OAuth. The
+   * worker compares these with the booking page before creating a preview. */
+  verifiedInstagramHandle?: string | null;
+  verifiedInstagramDisplayName?: string | null;
 };
 
 export type OnboardingHints = {

@@ -47,6 +47,7 @@ const BodySchema = z.object({
   bookingUrl: z.string().url(),
   /** Handle, @handle or a pasted profile URL — stored as a bare handle. */
   instagramHandle: z.string().trim().max(500).optional().transform(normalizeInstagramHandle),
+  instagramDisplayName: z.string().trim().max(255).optional(),
   address: z.string().trim().optional(),
   phone: z.string().trim().optional(),
   /** Example agents to synthesize when the scrape finds no real staff. */
@@ -152,6 +153,8 @@ export async function POST(req: NextRequest) {
         planCode: body.planCode,
         trialPeriodDays: body.trialPeriodDays,
         publicBaseUrl: body.publicBaseUrl,
+        verifiedInstagramHandle: body.instagramHandle,
+        verifiedInstagramDisplayName: body.instagramDisplayName,
       }
     : {
         loginEmail: body.email,

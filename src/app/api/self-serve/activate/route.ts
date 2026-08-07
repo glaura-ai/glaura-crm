@@ -127,6 +127,7 @@ export async function POST(request: NextRequest) {
       email,
       salonName,
       proPortalUrl: proPortalUrlForStripeMode(parsed.data.isStripeLive),
+      emailKind: "pro_activation",
     });
     if (!emailResult.sent) {
       await activationRef.set({

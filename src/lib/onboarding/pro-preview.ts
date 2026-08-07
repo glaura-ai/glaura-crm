@@ -1,6 +1,50 @@
 import { createHash, createHmac } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import type { PrismaClient } from "@/generated/prisma/client";
+import { renderTemplate } from "@/lib/emailTemplates";
 
 export type ProPlanCode = "basic" | "reservation";
+
+export const PRO_PREVIEW_READY_TEMPLATE_KEY = "PRO_PREVIEW_READY";
+
+export type ProPreviewTemplate = {
+  id?: string;
+  subject: string;
+  body: string;
+  source: "database" | "file";
+};
+
+let previewTemplateBody: string | null = null;
+
+export function bundledProPreviewTemplate(): ProPreviewTemplate {
+  if (previewTemplateBody == null) {
+    previewTemplateBody = readFileSync(
+      fileURLToPath(new URL("./templates/pro-preview-ready.html", import.meta.url)),
+      "utf8",
+    );
+  }
+  return {
+    subject: "{{salon}} — votre page Glaura est prête",
+    body: previewTemplateBody,
+    source: "file",
+  };
+}
+
+export async function loadProPreviewTemplate(
+  prisma: Pick<PrismaClient, "emailTemplate">,
+): Promise<ProPreviewTemplate> {
+  try {
+    const row = await prisma.emailTemplate.findFirst({
+      where: { key: PRO_PREVIEW_READY_TEMPLATE_KEY, archivedAt: null },
+      select: { id: true, subject: true, body: true },
+    });
+    if (row?.body.trim()) return { ...row, source: "database" };
+  } catch {
+    // A missing migration/database must never suppress the ready notification.
+  }
+  return bundledProPreviewTemplate();
+}
 
 export function proPortalUrlForStripeMode(isLive: boolean): string {
   return isLive ? "https://pro.glaura.ai" : "https://staging-pro.glaura.ai";
@@ -26,24 +70,25 @@ export function renderProPreviewEmail(input: {
   previewUrl: string;
   salonName: string;
   serviceCount: number;
-}) {
+  instagramHandle?: string | null;
+}, template: ProPreviewTemplate = bundledProPreviewTemplate()) {
   const salon = input.salonName.trim() || "votre salon";
   const count = Math.max(0, Math.floor(input.serviceCount));
-  const subject = `${salon} — votre page Glaura est prête`;
+  const instagram = (input.instagramHandle ?? "").trim().replace(/^@+/, "");
+  const values = {
+    "{{lien_apercu}}": input.previewUrl,
+    "{{nombre_prestations}}": String(count),
+    "{{instagram_salon}}": instagram,
+  };
+  const salonDraft = { name: salon, contactName: null, bookingUrl: null };
+  const subject = renderTemplate(template.subject, salonDraft, { format: "TEXT", values });
   const text = [
     `Bonjour,`,
     `La page Glaura de ${salon} est prête avec ${count} prestations.`,
     `Découvrez-la ici : ${input.previewUrl}`,
     `Vous pourrez la vérifier avant de choisir votre abonnement et de la mettre en ligne.`,
   ].join("\n\n");
-  const html = `
-    <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;color:#191919">
-      <h1 style="font-size:28px">Votre page est prête.</h1>
-      <p>Nous avons préparé la page de <strong>${escapeHtml(salon)}</strong> avec ${count} prestations.</p>
-      <p style="margin:30px 0"><a href="${escapeHtml(input.previewUrl)}" style="background:#e45745;color:#fff;padding:14px 22px;border-radius:8px;text-decoration:none;font-weight:700">Voir ma page</a></p>
-      <p>Vous pourrez la vérifier avant de choisir votre abonnement et de la mettre en ligne.</p>
-    </div>
-  `.trim();
+  const html = renderTemplate(template.body, salonDraft, { format: "HTML", values });
   return { subject, text, html };
 }
 
@@ -63,14 +108,4 @@ export function subscriptionMatchesActivation(
 
 function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (character) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  })[character] ?? character);
 }
