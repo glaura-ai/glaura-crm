@@ -27,30 +27,39 @@ export async function sweepStuckSignups(
     select: { id: true, name: true },
   });
 
+  let flagged = 0;
   for (const salon of stuck) {
-    await prisma.$transaction([
-      prisma.salon.update({
-        where: { id: salon.id },
+    // Guarded claim: an onboard dispatch landing between the findMany and this
+    // write moves the label past signup_started, and must win — never flag a
+    // salon that just completed OAuth with a false "rappeler le salon".
+    const claimed = await prisma.$transaction(async (tx) => {
+      const updated = await tx.salon.updateMany({
+        where: { id: salon.id, accountStatusLabel: "signup_started" },
         data: { accountStatusLabel: "signup_stuck", nextActionAt: now },
-      }),
-      prisma.reminder.create({
+      });
+      if (updated.count !== 1) return false;
+      await tx.reminder.create({
         data: {
           salonId: salon.id,
           title: "Inscription self-serve bloquée à l'étape Instagram — rappeler le salon",
           dueAt: now,
         },
-      }),
-      prisma.activity.create({
+      });
+      await tx.activity.create({
         data: {
           salonId: salon.id,
           type: "NOTE",
           notes: "Inscription self-serve bloquée : la vérification Instagram n'a pas abouti " +
             "dans les 30 minutes (compte non professionnel ou connexion abandonnée).",
         },
-      }),
-    ]);
-    console.log(`signup_stuck: ${salon.name} (${salon.id})`);
+      });
+      return true;
+    });
+    if (claimed) {
+      flagged++;
+      console.log(`signup_stuck: ${salon.name} (${salon.id})`);
+    }
   }
 
-  return stuck.length;
+  return flagged;
 }

@@ -26,9 +26,16 @@ export type SignupStartedInput = {
   planCode?: "basic" | "reservation";
 };
 
-/** Labels a fresh signup may overwrite. Anything else means the salon already
- * progressed (preview built, onboarded, in review) and must not regress. */
-const RESETTABLE_LABELS = new Set(["signup_started", "signup_stuck", "oauth_cancelled"]);
+/** Labels a fresh signup may overwrite. `import_failed` is included so a salon
+ * retrying after a failed import re-arms the stuck sweep instead of keeping a
+ * stale failure chip. Anything else means the salon already progressed
+ * (preview built, onboarded, in review) and must not regress. */
+const RESETTABLE_LABELS = new Set([
+  "signup_started",
+  "signup_stuck",
+  "oauth_cancelled",
+  "import_failed",
+]);
 
 export async function registerSignupStarted(
   prisma: PrismaClient,
@@ -64,17 +71,34 @@ export async function registerSignupStarted(
     return { salonId: existing.id, created: false };
   }
 
-  const salon = await prisma.salon.create({
-    data: {
-      ...contactFields,
-      slug: await reserveSalonSlug(prisma, slugify(input.salonName)),
-      source: "IMPORT",
-      externalRef,
-      status: "INTERESSE",
-      accountStatusLabel: "signup_started",
-    },
-    select: { id: true },
-  });
+  let salon: { id: string };
+  try {
+    salon = await prisma.salon.create({
+      data: {
+        ...contactFields,
+        slug: await reserveSalonSlug(prisma, slugify(input.salonName)),
+        source: "IMPORT",
+        externalRef,
+        status: "INTERESSE",
+        accountStatusLabel: "signup_started",
+      },
+      select: { id: true },
+    });
+  } catch (error) {
+    // Double-submit race: both requests miss the findFirst, the loser hits the
+    // unique externalRef (P2002). Treat it as the update path it should be.
+    if ((error as { code?: string })?.code === "P2002") {
+      const raced = await prisma.salon.findFirst({ where: { externalRef }, select: { id: true } });
+      if (raced) {
+        await prisma.salon.update({
+          where: { id: raced.id },
+          data: { ...contactFields, accountStatusLabel: "signup_started" },
+        });
+        return { salonId: raced.id, created: false };
+      }
+    }
+    throw error;
+  }
   await prisma.activity.create({
     data: {
       salonId: salon.id,
