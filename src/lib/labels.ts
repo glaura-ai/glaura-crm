@@ -79,3 +79,23 @@ export const PROSPECT_SOURCE_STYLE: Record<ProspectSource, string> = {
   BOOKSY: "bg-teal-100 text-teal-700",
   FRESHA: "bg-fuchsia-100 text-fuchsia-700",
 };
+
+// accountStatusLabel values that need a rep's attention, surfaced as a chip on
+// the salon card. Other labels (self_serve, pro_preview, …) stay detail-only.
+export const ACCOUNT_ATTENTION_LABEL: Record<string, string> = {
+  signup_started: "Inscription en cours",
+  signup_stuck: "Bloqué : vérif Instagram",
+  oauth_cancelled: "Bloqué : vérif Instagram",
+  identity_review: "Vérif identité requise",
+  duplicate_email: "Échec : email déjà utilisé",
+  import_failed: "Échec import",
+};
+
+export const ACCOUNT_ATTENTION_STYLE: Record<string, string> = {
+  signup_started: "bg-sky-100 text-sky-700",
+  signup_stuck: "bg-amber-100 text-amber-800",
+  oauth_cancelled: "bg-amber-100 text-amber-800",
+  identity_review: "bg-amber-100 text-amber-800",
+  duplicate_email: "bg-red-100 text-red-700",
+  import_failed: "bg-red-100 text-red-700",
+};

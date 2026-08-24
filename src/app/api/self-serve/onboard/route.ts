@@ -23,9 +23,7 @@ import { prisma } from "@/lib/db";
 import { normalizeInstagramHandle } from "@/lib/instagram";
 import { slugify } from "@/lib/slugs";
 import type { OnboardingOverrides } from "@/lib/onboarding";
-import type { $Enums } from "@/generated/prisma/client";
-
-type BookingTool = $Enums.BookingTool;
+import { detectBookingTool, reserveSalonSlug } from "@/lib/onboarding/self-serve-salon";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,22 +69,6 @@ const BodySchema = z.object({
   }
 });
 
-/** Maps a booking-page host to its CRM BookingTool + worker sourceType string. */
-function detectBookingTool(url: string): { bookingTool: BookingTool; sourceType: string } {
-  let host = "";
-  try {
-    host = new URL(url).hostname.toLowerCase();
-  } catch {
-    host = "";
-  }
-  if (host.includes("planity")) return { bookingTool: "PLANITY", sourceType: "planity" };
-  if (host.includes("treatwell")) return { bookingTool: "TREATWELL", sourceType: "treatwell" };
-  if (host.includes("booksy")) return { bookingTool: "BOOKSY", sourceType: "booksy" };
-  if (host.includes("acuity") || host.includes("acuityscheduling")) return { bookingTool: "ACUITY", sourceType: "acuity" };
-  if (host.includes("fresha")) return { bookingTool: "FRESHA", sourceType: "fresha" };
-  return { bookingTool: "SITE", sourceType: "generic" };
-}
-
 /** Constant-time bearer-secret check; false when unconfigured or mismatched. */
 function isAuthorized(req: NextRequest): boolean {
   const secret = process.env.SELF_SERVE_ONBOARD_SECRET?.trim();
@@ -98,17 +80,6 @@ function isAuthorized(req: NextRequest): boolean {
   const b = Buffer.from(secret);
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
-}
-
-/** Reserves the first free Salon slug starting at `base`, then `base-1`, … */
-async function reserveSalonSlug(base: string): Promise<string> {
-  const root = base || "salon";
-  for (let i = 0; i < 500; i++) {
-    const candidate = i === 0 ? root : `${root}-${i}`;
-    const existing = await prisma.salon.findUnique({ where: { slug: candidate }, select: { id: true } });
-    if (!existing) return candidate;
-  }
-  throw new Error(`Could not reserve a free Salon slug for base "${base}"`);
 }
 
 export async function POST(req: NextRequest) {
@@ -187,7 +158,7 @@ export async function POST(req: NextRequest) {
           await prisma.salon.create({
             data: {
               name: body.salonName,
-              slug: await reserveSalonSlug(slugify(body.salonName)),
+              slug: await reserveSalonSlug(prisma, slugify(body.salonName)),
               address: body.address ?? null,
               phone: body.phone ?? null,
               contactName: body.contactName ?? null,
