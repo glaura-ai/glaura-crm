@@ -2,7 +2,14 @@ import Link from "next/link";
 import type { SalonListItem } from "@/lib/salons";
 import { Stars } from "@/components/Stars";
 import { SalonCardActions } from "@/components/SalonCardActions";
-import { METIER_LABEL, STATUS_LABEL, STATUS_STYLE, TYPE_STYLE } from "@/lib/labels";
+import {
+  ACCOUNT_ATTENTION_LABEL,
+  ACCOUNT_ATTENTION_STYLE,
+  METIER_LABEL,
+  STATUS_LABEL,
+  STATUS_STYLE,
+  TYPE_STYLE,
+} from "@/lib/labels";
 import { cn } from "@/lib/utils";
 
 export function SalonCard({ salon, canDelete = false }: { salon: SalonListItem; canDelete?: boolean }) {
@@ -25,6 +32,11 @@ export function SalonCard({ salon, canDelete = false }: { salon: SalonListItem; 
           </span>
         ))}
         <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", STATUS_STYLE[salon.status])}>{STATUS_LABEL[salon.status]}</span>
+        {salon.accountStatusLabel && ACCOUNT_ATTENTION_LABEL[salon.accountStatusLabel] && (
+          <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", ACCOUNT_ATTENTION_STYLE[salon.accountStatusLabel])}>
+            {ACCOUNT_ATTENTION_LABEL[salon.accountStatusLabel]}
+          </span>
+        )}
       </div>
 
       <p className="mt-2 text-sm text-slate-500">{salon.address ?? "Adresse inconnue"}</p>

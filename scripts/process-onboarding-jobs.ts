@@ -302,6 +302,12 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
           error: reason,
         },
       });
+      // Surface the failure on the salon itself: without the label the row
+      // keeps looking like a healthy signed salon in the pipeline.
+      await prisma.salon.update({
+        where: { id: job.salonId },
+        data: { accountStatusLabel: "duplicate_email" },
+      }).catch((error) => console.error(`failed to label salon ${job.salonId}:`, error));
       await emit("system", { type: "job_exited", subtype: "failed", data: { exitCode: 1, reason: "duplicate_email" } });
       console.log(`onboarded ${job.id} (${sourceUrl}): failed (duplicate_email, no scrape)`);
       return;
@@ -495,6 +501,12 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
         error: message.slice(0, 2000),
       },
     });
+    // Surface the failure on the salon itself: without the label the row
+    // keeps looking like a healthy signed salon in the pipeline.
+    await prisma.salon.update({
+      where: { id: job.salonId },
+      data: { accountStatusLabel: "import_failed" },
+    }).catch((labelError) => console.error(`failed to label salon ${job.salonId}:`, labelError));
     console.error(`failed ${job.id} (${sourceUrl}): ${message}`);
   }
 }
@@ -573,9 +585,14 @@ async function main() {
   }
 
   await requeueOrphans(prisma);
+  const { sweepStuckSignups } = await import("../src/lib/onboarding/signup-stuck-sweep");
   console.log(`onboarding worker polling every ${pollMs / 1000}s`);
   while (true) {
     await processBatch(prisma, pipeline);
+    // Flag self-serve signups abandoned at the Instagram gate. Best-effort:
+    // a sweep error must never take the job queue down with it.
+    await sweepStuckSignups(prisma).catch((error) =>
+      console.error("stuck-signup sweep failed:", error));
     await sleep(pollMs);
   }
 }
