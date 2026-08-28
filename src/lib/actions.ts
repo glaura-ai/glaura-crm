@@ -494,6 +494,56 @@ export async function triggerOnboarding(salonId: string) {
   revalidatePath("/dashboard");
 }
 
+/**
+ * Human identity validation for a review-held self-serve signup.
+ *
+ * SMS-channel signups (and weak Instagram name matches) stop at
+ * REVIEW_REQUIRED before any preview exists. Approving re-queues the SAME job
+ * with `identityApproved` so the worker re-runs the full pipeline treating
+ * identity as settled — the booking-claim conflict check still applies.
+ */
+export async function approveProIdentityAndRetry(jobId: string) {
+  const user = await requireCurrentUser();
+  if (user.role !== "ADMIN") throw new Error("Réservé aux admins");
+
+  const job = await prisma.onboardingJob.findUnique({
+    where: { id: jobId },
+    select: { id: true, salonId: true, status: true, config: true },
+  });
+  if (!job) throw new Error("Job d'onboarding introuvable");
+  if (job.status !== "REVIEW_REQUIRED") throw new Error("Ce job n'attend pas de vérification d'identité");
+
+  const config = job.config && typeof job.config === "object" && !Array.isArray(job.config)
+    ? (job.config as Record<string, unknown>)
+    : {};
+  await prisma.$transaction([
+    prisma.onboardingJob.update({
+      where: { id: job.id },
+      data: {
+        status: "QUEUED",
+        startedAt: null,
+        finishedAt: null,
+        error: null,
+        config: { ...config, identityApproved: true },
+      },
+    }),
+    prisma.salon.update({
+      where: { id: job.salonId },
+      data: { accountStatusLabel: "pro_preview" },
+    }),
+    prisma.activity.create({
+      data: {
+        salonId: job.salonId,
+        userId: user.id,
+        type: "NOTE",
+        notes: "Identité validée manuellement — onboarding relancé.",
+      },
+    }),
+  ]);
+  revalidatePath(`/salons/${job.salonId}`);
+  revalidatePath("/onboarding");
+}
+
 export type RevealPasswordResult = { ok: true; password: string } | { ok: false; error: string };
 
 /**

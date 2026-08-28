@@ -53,6 +53,9 @@ const BodySchema = z.object({
   /** Curated 5★ reviews to seed. Self-serve default is 0 (real reviews only). */
   reviewTarget: z.number().int().min(0).max(500).optional(),
   activationPreview: z.boolean().optional().default(false),
+  /** "sms" = phone-verified only (no Instagram ownership proof) → the worker
+   * always holds the preview for human identity review. Default: instagram. */
+  identityChannel: z.enum(["instagram", "sms"]).optional(),
   planCode: z.enum(["basic", "reservation"]).optional(),
   trialPeriodDays: z.number().int().min(1).max(30).optional(),
   /** Origin is selected by the trusted portal environment before OAuth. Keep
@@ -121,6 +124,7 @@ export async function POST(req: NextRequest) {
         agentCount: body.agentCount ?? 0,
         reviewTarget: body.reviewTarget ?? 0,
         activationPreview: body.activationPreview,
+        identityChannel: body.identityChannel ?? "instagram",
         planCode: body.planCode,
         trialPeriodDays: body.trialPeriodDays,
         publicBaseUrl: body.publicBaseUrl,

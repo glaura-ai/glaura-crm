@@ -3,7 +3,9 @@ export type ProIdentitySignal =
   | "name_tokens"
   | "name_acronym"
   | "test_allowlist"
-  | "booking_claim_conflict";
+  | "booking_claim_conflict"
+  | "sms_channel"
+  | "human_approved";
 
 export type ProIdentityResult = {
   status: "verified" | "review_required";
@@ -78,7 +80,14 @@ export function evaluateProSalonIdentity(input: {
   bookingUrl: string;
   instagramUsername: string;
   instagramDisplayName?: string | null;
-}, options: { bypassAllChecks?: boolean } = {}): ProIdentityResult {
+}, options: {
+  bypassAllChecks?: boolean;
+  /** True when the signup was verified over a channel that does NOT prove
+   * Instagram ownership (SMS). Name similarity then proves nothing — an
+   * impersonator can type the real salon's name — so the result is always
+   * held for human review; the scoring still runs to inform the reviewer. */
+  unverifiedChannel?: boolean;
+} = {}): ProIdentityResult {
   const signals: ProIdentitySignal[] = [];
   let score = 0;
   const bookingClaim = normalizeBookingClaim(input.bookingUrl);
@@ -119,6 +128,17 @@ export function evaluateProSalonIdentity(input: {
   if (acronyms.some((acronym) => instagramHaystack.has(acronym))) {
     signals.push("name_acronym");
     score += 3;
+  }
+
+  if (options.unverifiedChannel) {
+    signals.push("sms_channel");
+    return {
+      status: "review_required",
+      score,
+      requiredScore: REQUIRED_SCORE,
+      signals: Array.from(new Set(signals)),
+      bookingClaim,
+    };
   }
 
   return {

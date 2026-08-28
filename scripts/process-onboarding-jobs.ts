@@ -345,12 +345,22 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
         verifiedInstagramHandle,
         process.env.PRO_IDENTITY_TEST_BYPASS_HANDLES,
       );
+      // A human approval (CRM "Valider l'identité" on a REVIEW_REQUIRED job)
+      // re-queues the job with identityApproved — identity is then settled,
+      // but the booking-claim conflict check below still applies.
+      const humanApproved = overrides.identityApproved === true;
       let identity = pipeline.evaluateProSalonIdentity({
         bookingSalonName: extract.salon.name,
         bookingUrl: sourceUrl,
         instagramUsername: verifiedInstagramHandle,
         instagramDisplayName: overrides.verifiedInstagramDisplayName,
-      }, { bypassAllChecks: testBypass });
+      }, {
+        bypassAllChecks: testBypass || humanApproved,
+        unverifiedChannel: overrides.identityChannel === "sms",
+      });
+      if (humanApproved && !testBypass) {
+        identity = { ...identity, signals: ["human_approved"] };
+      }
       if (identity.status === "verified") {
         const claim = await pipeline.claimProBookingUrl(
           prisma,

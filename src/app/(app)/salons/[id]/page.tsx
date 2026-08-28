@@ -7,7 +7,7 @@ import { OnboardingPasswordReveal } from "@/components/OnboardingPasswordReveal"
 import { SalonEditModal } from "@/components/SalonEditModal";
 import { getSalon, getAssignableUsers } from "@/lib/salons";
 import { prisma } from "@/lib/db";
-import { addReminder, changeStatus, completeReminder, logActivity, queueFollowUpEmail, setDailyPriority, triggerOnboarding, updateSalon } from "@/lib/actions";
+import { addReminder, approveProIdentityAndRetry, changeStatus, completeReminder, logActivity, queueFollowUpEmail, setDailyPriority, triggerOnboarding, updateSalon } from "@/lib/actions";
 import { isDailyPriorityActive } from "@/lib/dailyPriority";
 import { canRevealOnboardingPassword } from "@/lib/onboarding-access";
 import { onboardingPreviewValues } from "@/lib/onboarding/salon-credentials";
@@ -245,6 +245,16 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
                   <div className="mt-1 text-xs font-medium text-slate-500">{latestJob.serviceCount} services · {latestJob.agentCount ?? 0} agents</div>
                 )}
                 {latestJob.error && <p className="mt-2 text-sm text-rose-700">{latestJob.error}</p>}
+                {latestJob.status === "REVIEW_REQUIRED" && isAdmin && (
+                  <form action={approveProIdentityAndRetry.bind(null, latestJob.id)} className="mt-3">
+                    <button className="w-full rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-600">
+                      Valider l&apos;identité et relancer
+                    </button>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Vérifie que le salon est bien le propriétaire (Instagram, téléphone) avant de valider.
+                    </p>
+                  </form>
+                )}
               </div>
             ) : null}
             <form action={triggerOnboarding.bind(null, id)}>

@@ -73,4 +73,28 @@ describe("/pro salon identity verification", () => {
     expect(result.score).toBe(result.requiredScore);
     expect(result.signals).toEqual(["test_allowlist"]);
   });
+
+  it("always requires human review on an unverified channel, even on a perfect name match", () => {
+    // SMS proves the phone, not Instagram ownership: an impersonator can type
+    // the real salon's name and handle, so a name match must never auto-pass.
+    const result = evaluateProSalonIdentity({
+      bookingSalonName: "Pour La Beauté",
+      bookingUrl: "https://www.planity.com/pour-la-beaute",
+      instagramUsername: "pour_labeautee",
+      instagramDisplayName: "Pour La Beauté",
+    }, { unverifiedChannel: true });
+
+    expect(result.status).toBe("review_required");
+    expect(result.signals).toContain("sms_channel");
+  });
+
+  it("lets the explicit bypass win over the unverified-channel hold", () => {
+    const result = evaluateProSalonIdentity({
+      bookingSalonName: "IBE - International Beauty Expert",
+      bookingUrl: "https://www.planity.com/international-beauty-expert-75016-paris",
+      instagramUsername: "gg_pyvalone",
+    }, { bypassAllChecks: true, unverifiedChannel: true });
+
+    expect(result.status).toBe("verified");
+  });
 });
