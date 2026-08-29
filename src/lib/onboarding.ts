@@ -83,6 +83,13 @@ export type OnboardingOverrides = {
    * worker compares these with the booking page before creating a preview. */
   verifiedInstagramHandle?: string | null;
   verifiedInstagramDisplayName?: string | null;
+  /** How the salon proved its identity. "instagram" (default) means Business
+   * Login OAuth — ownership is proven. "sms" means only the phone was
+   * verified: the worker always holds these for human identity review. */
+  identityChannel?: "instagram" | "sms" | null;
+  /** Set by the CRM approve action when a human validated a review-held
+   * signup; the re-queued job then treats identity as verified. */
+  identityApproved?: boolean | null;
 };
 
 export type OnboardingHints = {

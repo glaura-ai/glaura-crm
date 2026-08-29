@@ -341,16 +341,31 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
     // catalogue or issuing a private preview/Stripe link.
     if (overrides?.activationPreview && overrides.targetUid) {
       const verifiedInstagramHandle = overrides.verifiedInstagramHandle ?? job.salon.instagram ?? "";
-      const testBypass = pipeline.isProIdentityTestBypassAllowed(
+      // The test allowlist is only trustworthy when the handle came from Meta
+      // OAuth. On the SMS channel the handle is salon-TYPED: honoring the
+      // allowlist there would let anyone skip human review by typing an
+      // allowlisted handle. SMS testing goes through the CRM approve button.
+      const smsChannel = overrides.identityChannel === "sms";
+      const testBypass = !smsChannel && pipeline.isProIdentityTestBypassAllowed(
         verifiedInstagramHandle,
         process.env.PRO_IDENTITY_TEST_BYPASS_HANDLES,
       );
+      // A human approval (CRM "Valider l'identité" on a REVIEW_REQUIRED job)
+      // re-queues the job with identityApproved — identity is then settled,
+      // but the booking-claim conflict check below still applies.
+      const humanApproved = overrides.identityApproved === true;
       let identity = pipeline.evaluateProSalonIdentity({
         bookingSalonName: extract.salon.name,
         bookingUrl: sourceUrl,
         instagramUsername: verifiedInstagramHandle,
         instagramDisplayName: overrides.verifiedInstagramDisplayName,
-      }, { bypassAllChecks: testBypass });
+      }, {
+        bypassAllChecks: testBypass || humanApproved,
+        unverifiedChannel: smsChannel && !humanApproved,
+      });
+      if (humanApproved && !testBypass) {
+        identity = { ...identity, signals: ["human_approved"] };
+      }
       if (identity.status === "verified") {
         const claim = await pipeline.claimProBookingUrl(
           prisma,
