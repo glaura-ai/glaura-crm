@@ -186,7 +186,9 @@ export async function POST(req: NextRequest) {
         where: {
           salonId,
           sourceUrl: body.bookingUrl,
-          status: { in: ["QUEUED", "PROCESSING", "DONE"] },
+          // REVIEW_REQUIRED counts as active: a retry must surface the held
+          // job (approve resumes it) rather than enqueue a duplicate scrape.
+          status: { in: ["QUEUED", "PROCESSING", "DONE", "REVIEW_REQUIRED"] },
         },
         orderBy: { createdAt: "desc" },
         take: 5,

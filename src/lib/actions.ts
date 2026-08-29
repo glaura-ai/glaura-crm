@@ -516,9 +516,11 @@ export async function approveProIdentityAndRetry(jobId: string) {
   const config = job.config && typeof job.config === "object" && !Array.isArray(job.config)
     ? (job.config as Record<string, unknown>)
     : {};
-  await prisma.$transaction([
-    prisma.onboardingJob.update({
-      where: { id: job.id },
+  await prisma.$transaction(async (tx) => {
+    // Status-guarded claim: a double-click or a concurrent approve after the
+    // worker already picked the job up must not flip PROCESSING back to QUEUED.
+    const requeued = await tx.onboardingJob.updateMany({
+      where: { id: job.id, status: "REVIEW_REQUIRED" },
       data: {
         status: "QUEUED",
         startedAt: null,
@@ -526,20 +528,21 @@ export async function approveProIdentityAndRetry(jobId: string) {
         error: null,
         config: { ...config, identityApproved: true },
       },
-    }),
-    prisma.salon.update({
+    });
+    if (requeued.count !== 1) throw new Error("Ce job a déjà été relancé");
+    await tx.salon.update({
       where: { id: job.salonId },
       data: { accountStatusLabel: "pro_preview" },
-    }),
-    prisma.activity.create({
+    });
+    await tx.activity.create({
       data: {
         salonId: job.salonId,
         userId: user.id,
         type: "NOTE",
         notes: "Identité validée manuellement — onboarding relancé.",
       },
-    }),
-  ]);
+    });
+  });
   revalidatePath(`/salons/${job.salonId}`);
   revalidatePath("/onboarding");
 }

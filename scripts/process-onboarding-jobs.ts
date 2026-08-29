@@ -341,7 +341,12 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
     // catalogue or issuing a private preview/Stripe link.
     if (overrides?.activationPreview && overrides.targetUid) {
       const verifiedInstagramHandle = overrides.verifiedInstagramHandle ?? job.salon.instagram ?? "";
-      const testBypass = pipeline.isProIdentityTestBypassAllowed(
+      // The test allowlist is only trustworthy when the handle came from Meta
+      // OAuth. On the SMS channel the handle is salon-TYPED: honoring the
+      // allowlist there would let anyone skip human review by typing an
+      // allowlisted handle. SMS testing goes through the CRM approve button.
+      const smsChannel = overrides.identityChannel === "sms";
+      const testBypass = !smsChannel && pipeline.isProIdentityTestBypassAllowed(
         verifiedInstagramHandle,
         process.env.PRO_IDENTITY_TEST_BYPASS_HANDLES,
       );
@@ -356,7 +361,7 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
         instagramDisplayName: overrides.verifiedInstagramDisplayName,
       }, {
         bypassAllChecks: testBypass || humanApproved,
-        unverifiedChannel: overrides.identityChannel === "sms",
+        unverifiedChannel: smsChannel && !humanApproved,
       });
       if (humanApproved && !testBypass) {
         identity = { ...identity, signals: ["human_approved"] };
