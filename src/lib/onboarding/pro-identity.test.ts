@@ -74,17 +74,17 @@ describe("/pro salon identity verification", () => {
     expect(result.signals).toEqual(["test_allowlist"]);
   });
 
-  it("always requires human review on an unverified channel, even on a perfect name match", () => {
-    // SMS proves the phone, not Instagram ownership: an impersonator can type
-    // the real salon's name and handle, so a name match must never auto-pass.
+  it("lets an unverified channel through without a name match, flagged sms_channel", () => {
+    // Product decision (2026-09-24): SMS signups must never be blocked on a
+    // human review. The Stripe checkout + sales call are the check; the flag
+    // keeps them identifiable. The booking-claim conflict check still applies.
     const result = evaluateProSalonIdentity({
       bookingSalonName: "Pour La Beauté",
       bookingUrl: "https://www.planity.com/pour-la-beaute",
-      instagramUsername: "pour_labeautee",
-      instagramDisplayName: "Pour La Beauté",
+      instagramUsername: "unrelated_handle",
     }, { unverifiedChannel: true });
 
-    expect(result.status).toBe("review_required");
+    expect(result.status).toBe("verified");
     expect(result.signals).toContain("sms_channel");
   });
 
