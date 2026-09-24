@@ -342,9 +342,8 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
     if (overrides?.activationPreview && overrides.targetUid) {
       const verifiedInstagramHandle = overrides.verifiedInstagramHandle ?? job.salon.instagram ?? "";
       // The test allowlist is only trustworthy when the handle came from Meta
-      // OAuth. On the SMS channel the handle is salon-TYPED: honoring the
-      // allowlist there would let anyone skip human review by typing an
-      // allowlisted handle. SMS testing goes through the CRM approve button.
+      // OAuth. On the SMS channel the handle is salon-TYPED, so it only ever
+      // gets the sms_channel pass (which still runs the booking-claim check).
       const smsChannel = overrides.identityChannel === "sms";
       const testBypass = !smsChannel && pipeline.isProIdentityTestBypassAllowed(
         verifiedInstagramHandle,

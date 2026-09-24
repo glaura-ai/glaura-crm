@@ -83,9 +83,10 @@ export function evaluateProSalonIdentity(input: {
 }, options: {
   bypassAllChecks?: boolean;
   /** True when the signup was verified over a channel that does NOT prove
-   * Instagram ownership (SMS). Name similarity then proves nothing — an
-   * impersonator can type the real salon's name — so the result is always
-   * held for human review; the scoring still runs to inform the reviewer. */
+   * Instagram ownership (SMS). Name similarity then proves nothing, so it is
+   * not gated on: SMS signups must never block on a human review (product
+   * decision 2026-09-24 — Stripe checkout + the sales call are the check).
+   * The `sms_channel` signal keeps them identifiable. */
   unverifiedChannel?: boolean;
 } = {}): ProIdentityResult {
   const signals: ProIdentitySignal[] = [];
@@ -133,7 +134,7 @@ export function evaluateProSalonIdentity(input: {
   if (options.unverifiedChannel) {
     signals.push("sms_channel");
     return {
-      status: "review_required",
+      status: "verified",
       score,
       requiredScore: REQUIRED_SCORE,
       signals: Array.from(new Set(signals)),
