@@ -27,6 +27,20 @@ import { getStorage as getStorageForApp } from "firebase-admin/storage";
  */
 export const MEDIA_BUCKET = "glaura-user-media-eu";
 
+/**
+ * Firestore database id. The backend migrated from the implicit `(default)`
+ * database (nam5, US) to `prod-eu` (eur3) on 2026-09-28; `(default)` is frozen
+ * and read-only in practice, so anything written there is invisible to the rest
+ * of the stack — a salon onboarded against it would not exist for search,
+ * booking or the portal.
+ *
+ * The fallback is deliberately `prod-eu`, not `(default)`: forgetting the env
+ * var should fail toward the live database, never the abandoned one. Set
+ * `FIRESTORE_DATABASE_ID=(default)` explicitly to roll back.
+ */
+const FIRESTORE_DATABASE_ID =
+  process.env.FIRESTORE_DATABASE_ID?.trim() || "prod-eu";
+
 let cachedApp: App | null = null;
 
 /** Returns the singleton firebase-admin App, initializing it from ADC on first call. */
@@ -43,9 +57,9 @@ export function getAuth(): Auth {
   return getAuthForApp(getAdmin());
 }
 
-/** Firestore client for the `beauty-984c8` project. */
+/** Firestore client for the `beauty-984c8` project, on [FIRESTORE_DATABASE_ID]. */
 export function getDb(): Firestore {
-  return getFirestoreForApp(getAdmin());
+  return getFirestoreForApp(getAdmin(), FIRESTORE_DATABASE_ID);
 }
 
 /** The EU user-media bucket ([MEDIA_BUCKET]) for salon/profile image uploads. */
