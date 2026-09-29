@@ -69,6 +69,7 @@ const ReviewItemSchema = z.object({
   author: z.string(),
   rating: z.number().nullable(),
   text: z.string(),
+  date: z.string().nullable().optional(),
 });
 
 export const SalonExtractSchema = z.object({
@@ -135,6 +136,7 @@ type TrimmedReview = {
   author: string;
   rating: number | null;
   text: string;
+  date: string | null;
 };
 
 type TrimmedSalonData = {
@@ -213,13 +215,6 @@ function renderTrimmedText(data: TrimmedSalonData, sourceType: SourceType): stri
 
   lines.push("", "STAFF:");
   lines.push(...(data.staff.length > 0 ? data.staff.map((s) => `- ${s}`) : ["- (none found)"]));
-
-  if (data.reviews.length > 0) {
-    lines.push("", "REVIEWS:");
-    for (const r of data.reviews) {
-      lines.push(`- ${r.author} | rating: ${r.rating ?? "?"} | ${r.text}`);
-    }
-  }
 
   return lines.join("\n");
 }
@@ -483,6 +478,7 @@ function parsePlanity($: CheerioAPI): TrimmedSalonData {
       author: typeof author?.name === "string" ? author.name : "Anonyme",
       rating: typeof reviewRating?.ratingValue === "number" ? reviewRating.ratingValue : null,
       text: typeof review.reviewBody === "string" ? review.reviewBody.trim() : "",
+      date: typeof review.datePublished === "string" ? review.datePublished : null,
     };
   });
 
@@ -619,6 +615,7 @@ function parseTreatwell($: CheerioAPI): TrimmedSalonData {
       author: typeof author?.name === "string" ? author.name : "Client",
       rating: typeof reviewRating?.ratingValue === "number" ? reviewRating.ratingValue : null,
       text: typeof review.reviewBody === "string" ? review.reviewBody.trim() : "",
+      date: typeof review.datePublished === "string" ? review.datePublished : null,
     };
   });
 
@@ -953,6 +950,27 @@ function parseFresha(html: string): TrimmedSalonData {
 // Public API
 // ---------------------------------------------------------------------------
 
+/** Deterministic per-source parse of the expanded page HTML. */
+function parseSourcePage(html: string, sourceType: SourceType): TrimmedSalonData {
+  const $ = cheerio.load(html);
+  // Keep JSON-LD (read by the parsers above) but drop everything else that
+  // never contributes text we extract from.
+  $("script:not([type='application/ld+json'])").remove();
+  $("style, noscript, svg, nav, link, iframe").remove();
+
+  return sourceType === "planity"
+    ? parsePlanity($)
+    : sourceType === "treatwell"
+      ? parseTreatwell($)
+      : sourceType === "acuity"
+        ? parseAcuity(html)
+        : sourceType === "booksy"
+          ? parseBooksy($)
+          : sourceType === "fresha"
+            ? parseFresha(html)
+            : parseGeneric($);
+}
+
 /**
  * Reduces the fully-expanded page HTML (~1.4-1.9MB) to a compact plain-text
  * block containing only what's needed for extraction: salon name, address,
@@ -960,26 +978,15 @@ function parseFresha(html: string): TrimmedSalonData {
  * description per service), and image URLs. Deterministic, no LLM call.
  */
 export function trimHtmlForExtraction(html: string, sourceType: SourceType): string {
-  const $ = cheerio.load(html);
-  // Keep JSON-LD (read by the parsers above) but drop everything else that
-  // never contributes text we extract from.
-  $("script:not([type='application/ld+json'])").remove();
-  $("style, noscript, svg, nav, link, iframe").remove();
+  return renderTrimmedText(parseSourcePage(html, sourceType), sourceType);
+}
 
-  const data =
-    sourceType === "planity"
-      ? parsePlanity($)
-      : sourceType === "treatwell"
-        ? parseTreatwell($)
-        : sourceType === "acuity"
-          ? parseAcuity(html)
-          : sourceType === "booksy"
-            ? parseBooksy($)
-            : sourceType === "fresha"
-              ? parseFresha(html)
-              : parseGeneric($);
-
-  return renderTrimmedText(data, sourceType);
+/**
+ * Reviews exactly as published on the source page (JSON-LD), parsed without
+ * any LLM so they can never be rewritten or invented.
+ */
+export function extractPageReviews(html: string, sourceType: SourceType): TrimmedReview[] {
+  return parseSourcePage(html, sourceType).reviews;
 }
 
 const EXTRACTION_MODEL = "claude-haiku-4-5";
@@ -1051,7 +1058,8 @@ export async function extractSalon(
     throw new Error("claude-haiku-4-5 structured-output extraction returned no parsed_output");
   }
 
-  const parsed = response.parsed_output as SalonExtract;
+  // Reviews come from the page itself, never from the model's output.
+  const parsed = { ...(response.parsed_output as SalonExtract), reviews: extractPageReviews(html, sourceType) };
   return sourceType === "planity" ? mergePlanityOptions(parsed, html) : parsed;
 }
 

@@ -518,7 +518,7 @@ export function buildAgentDocs(
 }
 
 // ---------------------------------------------------------------------------
-// buildReviewDocs — real Planity reviews first (forced to 5★), then filled
+// buildReviewDocs — only the reviews published on the source page
 // ---------------------------------------------------------------------------
 
 /** A review doc written to `userProfile/{uid}/reviews` (see review_model.dart). */
@@ -541,73 +541,35 @@ export interface ReviewsResult {
   total_review: number;
 }
 
-/** Curated French 5★ comments used to top up to the requested review count. */
-const FILLER_REVIEW_TEXTS = [
-  "Salon au top, équipe à l'écoute et très professionnelle. Je recommande vivement !",
-  "Accueil chaleureux et résultat impeccable. Je reviendrai sans hésiter.",
-  "Prestation parfaite, on ressort ravie à chaque fois. Merci beaucoup !",
-  "Très satisfaite, travail soigné et conseils personnalisés. Un grand bravo.",
-  "Une adresse que je recommande les yeux fermés, personnel adorable.",
-  "Ponctualité, hygiène et professionnalisme au rendez-vous. Parfait.",
-  "Résultat magnifique et ambiance très agréable. Rien à redire.",
-  "Excellente expérience du début à la fin, je suis conquise.",
-  "Des mains en or et des conseils avisés. Merci pour votre travail.",
-  "Toujours un plaisir de venir, service irréprochable à chaque visite.",
-  "Salon propre, équipe souriante et prestation de grande qualité.",
-  "Je recommande à 100%, on se sent entre de bonnes mains.",
-  "Super accueil et finition parfaite, exactement ce que je voulais.",
-  "Rapport qualité-prix excellent et résultat au-delà de mes attentes.",
-  "Une équipe passionnée et à l'écoute, je ne changerais pour rien au monde.",
-] as const;
-
-const FILLER_REVIEW_AUTHORS = [
-  "Aminata D.", "Sophie L.", "Nadia B.", "Camille R.", "Yasmine K.", "Laura M.",
-  "Inès T.", "Sarah P.", "Awa C.", "Manon G.", "Fatoumata S.", "Julie V.",
-  "Chloé N.", "Aïcha F.", "Emma D.", "Kadiatou B.", "Léa H.", "Marine J.",
-  "Sabrina O.", "Clara W.", "Mariam K.", "Océane P.", "Rania Z.", "Élodie M.",
-] as const;
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 /**
- * Produces exactly `target` five-star reviews: the real scraped reviews first
- * (text preserved, rating forced to 5), topped up from the curated pool to
- * reach `target`. `createdAt` is spread backwards from `now` so the feed reads
- * naturally. Aggregates are `avg_ratting: 5` / `total_review: target`.
+ * Produces at most `maxCount` review docs from the reviews actually published
+ * on the source page — never invented, padded, or re-rated. Reviews without
+ * text or rating are skipped. `createdAt` is the published date (noon UTC),
+ * falling back to `now` when the source has none.
  */
 export function buildReviewDocs(
-  realReviews: ReadonlyArray<{ author?: string | null; text?: string | null }>,
-  target: number,
+  realReviews: ReadonlyArray<{ author?: string | null; text?: string | null; rating?: number | null; date?: string | null }>,
+  maxCount: number,
   now: Date,
 ): ReviewsResult {
-  const real = realReviews
-    .filter((r) => (r.text ?? "").trim().length > 0)
-    .map((r) => ({ author: (r.author ?? "").trim() || "Client", text: (r.text ?? "").trim() }));
+  const reviews: ReviewDoc[] = realReviews
+    .filter((r) => (r.text ?? "").trim().length > 0 && typeof r.rating === "number")
+    .slice(0, Math.max(0, maxCount))
+    .map((r) => {
+      const published = r.date ? new Date(`${r.date.slice(0, 10)}T12:00:00Z`) : null;
+      return {
+        userName: (r.author ?? "").trim(),
+        userImage: "",
+        userid: "",
+        ratting: r.rating as number,
+        review: (r.text ?? "").trim(),
+        serviceId: "",
+        serviceName: "",
+        jobId: "",
+        createdAt: published && !Number.isNaN(published.getTime()) ? published : now,
+      };
+    });
 
-  const chosen: Array<{ author: string; text: string }> = [];
-  for (let i = 0; i < target; i += 1) {
-    if (i < real.length) {
-      chosen.push(real[i]);
-    } else {
-      const f = i - real.length;
-      chosen.push({
-        author: FILLER_REVIEW_AUTHORS[f % FILLER_REVIEW_AUTHORS.length],
-        text: FILLER_REVIEW_TEXTS[f % FILLER_REVIEW_TEXTS.length],
-      });
-    }
-  }
-
-  const reviews: ReviewDoc[] = chosen.map((r, i) => ({
-    userName: r.author,
-    userImage: "",
-    userid: "",
-    ratting: 5,
-    review: r.text,
-    serviceId: "",
-    serviceName: "",
-    jobId: "",
-    createdAt: new Date(now.getTime() - (i * 5 + 2) * DAY_MS),
-  }));
-
-  return { reviews, avg_ratting: 5, total_review: reviews.length };
+  const avg = reviews.length > 0 ? reviews.reduce((sum, r) => sum + r.ratting, 0) / reviews.length : 0;
+  return { reviews, avg_ratting: Math.round(avg * 100) / 100, total_review: reviews.length };
 }
