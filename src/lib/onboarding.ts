@@ -63,7 +63,7 @@ export type OnboardingOverrides = {
   deposit?: number | null;
   /** Number of synthesized agents to create (each assigned to all services). */
   agentCount?: number | null;
-  /** Total number of 5★ reviews to end up with (real Planity reviews first, then filled). */
+  /** Max number of real source-page reviews to import (never padded or re-rated). */
   reviewTarget?: number | null;
   /**
    * When true, the create path skips the plaintext-password welcome email and

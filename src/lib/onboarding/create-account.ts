@@ -465,7 +465,7 @@ async function applyCatalogEnrichment(
     if (agents.length > 0) agentCount = await createAgents(agents, warnings);
   }
 
-  // Reviews — real source reviews first (forced 5★), filled to the target.
+  // Reviews — only those published on the source page, capped at the target.
   let reviewCount = 0;
   const reviewTarget = overrides?.reviewTarget ?? 0;
   if (reviewTarget > 0) {
