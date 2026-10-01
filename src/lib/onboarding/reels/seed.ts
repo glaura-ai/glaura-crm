@@ -9,7 +9,10 @@
 // Firebase token, so the CRM worker can seed on behalf of a not-yet-connected
 // salon. The function caps ingestion at 5 reels.
 
-const DEFAULT_FUNCTIONS_BASE_URL = "https://us-central1-beauty-984c8.cloudfunctions.net";
+// The europe-west1 copy runs beside Firestore (eur3). Not GLAURA_FUNCTIONS_BASE_URL:
+// that one also serves createAgent / uploadServicesFromJSON, which have no EU
+// function copy, so the seed gets its own override.
+const DEFAULT_FUNCTIONS_BASE_URL = "https://europe-west1-beauty-984c8.cloudfunctions.net";
 
 // seedOnboardingVideos downloads + uploads server-side, so give it room.
 const SEED_TIMEOUT_MS = 540_000;
@@ -44,7 +47,7 @@ export async function seedOnboardingVideos(uid: string, reels: SeedReel[]): Prom
     return { requested: 0, synced: 0, hashDupes: 0, alreadySynced: 0, undetectedFallback: 0, failed: 0 };
   }
 
-  const base = process.env.GLAURA_FUNCTIONS_BASE_URL || DEFAULT_FUNCTIONS_BASE_URL;
+  const base = process.env.ONBOARDING_SEED_FUNCTIONS_BASE_URL?.trim() || DEFAULT_FUNCTIONS_BASE_URL;
   const response = await fetch(`${base}/seedOnboardingVideos`, {
     method: "POST",
     headers: {
