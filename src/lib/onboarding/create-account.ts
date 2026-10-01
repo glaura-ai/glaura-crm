@@ -63,7 +63,7 @@ import type { OnboardingHints, OnboardingOverrides, OnboardingResult } from "@/l
 
 const EMAIL_DOMAIN = GLAURA_EMAIL_DOMAIN;
 const FUNCTIONS_BASE_URL =
-  process.env.GLAURA_FUNCTIONS_BASE_URL?.trim() || "https://us-central1-beauty-984c8.cloudfunctions.net";
+  process.env.GLAURA_FUNCTIONS_BASE_URL?.trim() || "https://api.glaura.ai";
 const SERVICES_UPLOAD_URL = FUNCTIONS_BASE_URL;
 const CREATE_AGENT_URL = `${FUNCTIONS_BASE_URL}/createAgent`;
 const MAX_SUFFIX_ATTEMPTS = 500;
