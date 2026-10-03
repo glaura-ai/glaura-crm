@@ -29,6 +29,9 @@
  * Env:
  *   - IG_GRAPH_TOKEN / IG_GRAPH_USER_ID  — Graph Business Discovery (cookie-free)
  *   - ONBOARDING_SEED_SECRET             — shared secret for seedOnboardingVideos
+ *   - GLAURA_MEDIA_BASE_URL              — optional glaura-media service base; when set the
+ *                                          seed runs as an async job there instead of the
+ *                                          seedOnboardingVideos Cloud Function
  *   - GLAURA_FUNCTIONS_BASE_URL          — optional CF base (defaults to prod)
  */
 
