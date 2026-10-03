@@ -23,7 +23,7 @@ const SEED_TIMEOUT_MS = 540_000;
 // glaura-media job polling: backoff 2s -> 5s -> 10s, ~30 min overall.
 const POLL_DELAYS_MS = [2_000, 5_000, 10_000];
 const POLL_TIMEOUT_MS = 30 * 60_000;
-const MAX_TRANSIENT_POLL_ERRORS = 3;
+const MAX_TRANSIENT_POLL_ERRORS = 10; // ~1.5 min at 10 s: rides out a cold start or redeploy
 const REQUEST_TIMEOUT_MS = 30_000;
 
 export type SeedDeps = {
@@ -129,7 +129,7 @@ async function seedViaMedia(
     "seedOnboardingVideos",
   );
   if (enqueue.status !== 202 || !queued.jobId) {
-    const detail = queued.message ? `${queued.error}: ${queued.message}` : queued.error;
+    const detail = [queued.error, queued.message].filter(Boolean).join(": ") || undefined;
     throw new Error(`seedOnboardingVideos: ${detail ?? `HTTP ${enqueue.status}`}`);
   }
 
@@ -146,7 +146,7 @@ async function seedViaMedia(
       });
       if (res.status === 404) throw new Error(`seedOnboardingVideos: job ${jobId} introuvable (404)`);
       if (res.ok) job = await readJson<JobResponse>(res, "seedOnboardingVideos");
-      else if (res.status < 500) throw new Error(`seedOnboardingVideos: HTTP ${res.status} (job ${jobId})`);
+      else if (res.status < 500 && res.status !== 408 && res.status !== 429) throw new Error(`seedOnboardingVideos: HTTP ${res.status} (job ${jobId})`);
       else throw new TransientPollError(`HTTP ${res.status}`);
     } catch (err) {
       if (!(err instanceof TransientPollError) && err instanceof Error && err.message.startsWith("seedOnboardingVideos:")) {
@@ -160,6 +160,9 @@ async function seedViaMedia(
     transientErrors = 0;
     if (job.status === "succeeded" && job.result) return job.result;
     if (job.status === "failed") throw new Error(`seedOnboardingVideos: ${job.code ?? "failed"}`);
+    if (job.status !== "queued" && job.status !== "running") {
+      throw new Error(`seedOnboardingVideos: statut inattendu ${String(job.status)} (job ${jobId})`);
+    }
   }
   throw new Error(`seedOnboardingVideos: délai dépassé en attendant le job ${jobId}`);
 }
