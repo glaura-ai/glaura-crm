@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /** Compatibility identities; this module never enables sales or a trial. */
-export const proPlanCodeSchema = z.enum(["basic", "reservation", "essentiel_v2", "solo_v2", "salon_v2"]);
+export const proPlanCodeSchema = z.enum(["basic", "reservation", "essentiel_v2", "solo_v2", "salon_v2", "essentiel_v2_commitment", "solo_v2_commitment", "salon_v2_commitment"]);
 export type ProPlanCode = z.infer<typeof proPlanCodeSchema>;
 export function recognizedProPlan(value: unknown): ProPlanCode | null {
   const result = proPlanCodeSchema.safeParse(value);

@@ -69,3 +69,17 @@ describe("CRM V2 compatibility", () => {
     expect(profileSet).toHaveBeenCalledWith(expect.objectContaining({ enable: false, billingCheckoutOffer: expect.objectContaining({ planCode: "salon_v2", trialPeriodDays: 0 }) }), { merge: true });
   });
 });
+
+it.each(["essentiel_v2_commitment", "solo_v2_commitment", "salon_v2_commitment"])("preserves %s in API jobs and worker contract", async (planCode) => {
+  expect((await onboard(request({ ...body, planCode, trialPeriodDays: 0 }))).status).toBe(202);
+  expect(prisma.onboardingJob.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ config: expect.objectContaining({ planCode, trialPeriodDays: 0 }) }) }));
+  expect(proPreviewJobContract({ planCode, trialPeriodDays: 0 })).toEqual({ planCode, trialPeriodDays: 0 });
+});
+
+it("uses the latest commitment choice in previews without granting ordinary monthly activation", async () => {
+  profile.proPlanCode = "salon_v2_commitment";
+  await prepareAndNotifyProPreview({ prisma: { emailJob: { findFirst: vi.fn().mockResolvedValue({ id: "email" }) } } as never, jobId: "job", salonId: "salon", uid: "uid", email: "", phone: "", salonName: "Studio", serviceCount: 2, planCode: "solo_v2_commitment", trialPeriodDays: 0 });
+  expect(activationSet).toHaveBeenCalledWith(expect.objectContaining({ planCode: "salon_v2_commitment", trialPeriodDays: 0 }), { merge: true });
+  expect(profileSet).toHaveBeenCalledWith(expect.objectContaining({ billingCheckoutOffer: expect.objectContaining({ planCode: "salon_v2_commitment", trialPeriodDays: 0 }) }), { merge: true });
+  expect(subscriptionMatchesActivation({ stripeSubscriptionId: "sub", stripeSubscriptionStatus: "active", stripeSubscriptionIsLive: true, stripeSubscriptionPlanCode: "salon_v2" }, "salon_v2_commitment")).toBe(false);
+});

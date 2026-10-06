@@ -13,5 +13,9 @@ exact selected plan identity. Preview generation never grants paid access.
 This compatibility PR does not enable or configure the Firebase Pro V2 catalog,
 create Stripe prices, migrate subscribers or deploy services. Integrate through
 `develop`; release only with explicit authorization and after backend, portal,
-website and analytics contracts are validated together. Commitment checkout and
-website purchase remain disabled pending their commercial terms.
+website and analytics contracts are validated together. The `_commitment`
+identities represent twelve monthly payments at €14.90 / €39 / €65 with a
+minimum twelve-month term; they are preserved exactly, never rewritten to a
+flexible plan. Acceptance happens at checkout through the portal/backend, not
+at signup or preview generation. Old `_yearly` identities remain blocked.
+Website purchase remains disabled pending its commercial terms.
