@@ -1,3 +1,4 @@
+import { queuedProPlan, proPlanTrialDays } from "./pro-plan";
 import { FieldValue } from "firebase-admin/firestore";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { getDb, getMediaBucket } from "@/lib/firebase-admin";
@@ -49,9 +50,8 @@ export async function prepareAndNotifyProPreview(input: {
   // already running. The provisional profile is the latest server-authored
   // choice, so it wins over the queued job snapshot.
   const profilePlanCode = profile.get("proPlanCode");
-  const planCode: ProPlanCode = profilePlanCode === "basic" || profilePlanCode === "reservation" ?
-    profilePlanCode : input.planCode;
-  const trialPeriodDays = planCode === "basic" ? 7 : 14;
+  const planCode = queuedProPlan(profilePlanCode || input.planCode);
+  const trialPeriodDays = proPlanTrialDays(planCode);
   const profileImg = profile.get("profileImg");
   const salonImages = profile.get("salon_images");
   const heroImageUrl = typeof profileImg === "string" && profileImg.trim()

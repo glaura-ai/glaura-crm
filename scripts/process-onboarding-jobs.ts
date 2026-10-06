@@ -20,6 +20,7 @@
  * Chromium must be installed (playwright) for the expand step.
  */
 
+import { proPreviewJobContract } from "../src/lib/onboarding/pro-plan";
 import { loadEnvConfig } from "@next/env";
 import type { PrismaClient } from "../src/generated/prisma/client";
 
@@ -477,8 +478,7 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
             price: service.service_price,
             durationMinutes: service.duration_minutes,
           })),
-          planCode: overrides.planCode === "basic" ? "basic" : "reservation",
-          trialPeriodDays: overrides.trialPeriodDays ?? 14,
+          ...proPreviewJobContract(overrides),
           publicBaseUrl: overrides.publicBaseUrl ?? undefined,
         });
         await emit("system", {

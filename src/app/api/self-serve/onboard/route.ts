@@ -19,6 +19,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
+import { proPlanCodeSchema, proPlanTrialDays } from "@/lib/onboarding/pro-plan";
 import { prisma } from "@/lib/db";
 import { normalizeInstagramHandle } from "@/lib/instagram";
 import { slugify } from "@/lib/slugs";
@@ -56,14 +57,20 @@ const BodySchema = z.object({
   /** "sms" = phone-verified only (no Instagram ownership proof) → the worker
    * always holds the preview for human identity review. Default: instagram. */
   identityChannel: z.enum(["instagram", "sms"]).optional(),
-  planCode: z.enum(["basic", "reservation"]).optional(),
-  trialPeriodDays: z.number().int().min(1).max(30).optional(),
+  planCode: proPlanCodeSchema.optional(),
+  trialPeriodDays: z.number().int().min(0).max(30).optional(),
   /** Origin is selected by the trusted portal environment before OAuth. Keep
    * the allowlist explicit so notification links can never become an open
    * redirect if this service-to-service payload is malformed. */
   publicBaseUrl: z.enum(["https://glaura.ai", "https://staging-1.glaura.ai"]).optional(),
 }).superRefine((body, context) => {
-  if (body.activationPreview && (!body.targetUid || !body.planCode || !body.trialPeriodDays)) {
+  if (body.planCode && proPlanTrialDays(body.planCode) === 0 && (!body.activationPreview || body.trialPeriodDays !== 0)) {
+    context.addIssue({ code: "custom", message: "V2 onboarding requires payment-gated preview with trialPeriodDays zero", path: ["trialPeriodDays"] });
+  }
+  if (body.planCode && proPlanTrialDays(body.planCode) > 0 && body.trialPeriodDays === 0) {
+    context.addIssue({ code: "custom", message: "Legacy trial must remain positive", path: ["trialPeriodDays"] });
+  }
+  if (body.activationPreview && (!body.targetUid || !body.planCode || body.trialPeriodDays === undefined)) {
     context.addIssue({
       code: "custom",
       message: "activationPreview requires targetUid, planCode and trialPeriodDays",

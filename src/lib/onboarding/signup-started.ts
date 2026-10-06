@@ -1,3 +1,5 @@
+import type { ProPlanCode } from "@/lib/onboarding/pro-plan";
+
 /**
  * Registers a self-serve signup in the pipeline the moment it starts — before
  * the Instagram ownership gate. Until 2026-08 the first CRM write happened
@@ -23,7 +25,7 @@ export type SignupStartedInput = {
   phone?: string;
   /** Already-normalized bare handle (the route normalizes). */
   instagramHandle?: string | null;
-  planCode?: "basic" | "reservation";
+  planCode?: ProPlanCode;
 };
 
 /** Labels a fresh signup may overwrite. `import_failed` is included so a salon
