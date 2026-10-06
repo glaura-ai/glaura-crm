@@ -19,3 +19,10 @@ minimum twelve-month term; they are preserved exactly, never rewritten to a
 flexible plan. Acceptance happens at checkout through the portal/backend, not
 at signup or preview generation. Old `_yearly` identities remain blocked.
 Website purchase remains disabled pending its commercial terms.
+
+After the initial twelve payments, the subscription renews at the **normal**
+flexible monthly rate (€19 / €49 / €79), cancellable monthly with no new
+commitment. Correction captured: do not retain the discounted commitment rate
+at renewal. The backend owns the managed Stripe schedule and protected contract
+dates; CRM keeps the exact initial offer identity and never manufactures a new
+commitment or acceptance timestamp.
