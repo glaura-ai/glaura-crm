@@ -5,7 +5,8 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import { renderTemplate } from "@/lib/emailTemplates";
 import { isInlineHeroDataUri } from "@/lib/onboarding/pro-preview-image";
 
-export type ProPlanCode = "basic" | "reservation";
+import type { ProPlanCode } from "./pro-plan";
+export type { ProPlanCode } from "./pro-plan";
 
 export const PRO_PREVIEW_READY_TEMPLATE_KEY = "PRO_PREVIEW_READY";
 

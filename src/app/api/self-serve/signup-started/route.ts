@@ -14,6 +14,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
+import { proPlanCodeSchema } from "@/lib/onboarding/pro-plan";
 import { prisma } from "@/lib/db";
 import { isBearerAuthorized } from "@/lib/bearer-auth";
 import { normalizeInstagramHandle } from "@/lib/instagram";
@@ -30,7 +31,7 @@ const BodySchema = z.object({
   contactName: z.string().trim().optional(),
   phone: z.string().trim().optional(),
   instagramHandle: z.string().trim().max(500).optional().transform(normalizeInstagramHandle),
-  planCode: z.enum(["basic", "reservation"]).optional(),
+  planCode: proPlanCodeSchema.optional(),
 });
 
 export async function POST(req: NextRequest) {

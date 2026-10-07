@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
+import { recognizedProPlan } from "@/lib/onboarding/pro-plan";
 import { prisma } from "@/lib/db";
 import { getAuth, getDb } from "@/lib/firebase-admin";
 import { maybeSendMagicLinkEmail } from "@/lib/onboarding/magic-link";
@@ -54,8 +55,7 @@ export async function POST(request: NextRequest) {
   if (data.status === "activated") {
     return NextResponse.json({ ok: true, status: "activated" });
   }
-  const planCode = data.planCode === "basic" || data.planCode === "reservation" ?
-    data.planCode : null;
+  const planCode = recognizedProPlan(data.planCode);
   const email = typeof data.email === "string" ? data.email.trim() : "";
   const salonName = typeof data.salonName === "string" ? data.salonName.trim() : "";
   const salonId = typeof data.salonId === "string" ? data.salonId : "";

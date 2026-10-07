@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { SubmitButton } from "@/components/SubmitButton";
 import { METIER_ORDER, METIER_LABEL, STATUS_ORDER, STATUS_LABEL, BOOKING_LABEL } from "@/lib/labels";
@@ -36,22 +35,22 @@ export type AssignableUser = { id: string; name: string | null; email: string };
 export function SalonForm({
   action,
   salon,
+  formToken,
   isAdmin = false,
   assignableUsers = [],
   priorityActive = false,
 }: {
   action: (fd: FormData) => Promise<void>;
-  salon?: SalonFormValues | null;
   isAdmin?: boolean;
   assignableUsers?: AssignableUser[];
   priorityActive?: boolean;
-}) {
+} & ({ salon?: null; formToken: string } | { salon: SalonFormValues; formToken?: never })) {
   return (
     <form action={action} className="space-y-4">
       {/* One rendered create form may only ever produce one salon, however many
           times it is submitted — createSalon keys on this. Reloading the page
           mints a new token, which is the case where a second salon IS wanted. */}
-      {!salon && <input type="hidden" name="formToken" value={randomUUID()} />}
+      {!salon && <input type="hidden" name="formToken" value={formToken} />}
 
       {isAdmin && assignableUsers.length > 0 && (
         <div>

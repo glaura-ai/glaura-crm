@@ -1,3 +1,5 @@
+import type { ProPlanCode } from "@/lib/onboarding/pro-plan";
+
 /**
  * Shared types for the salon onboarding pipeline.
  *
@@ -75,7 +77,7 @@ export type OnboardingOverrides = {
   /** Public /pro conversion flow: enrich an inactive account, generate a
    * tokenized salon preview and withhold access until Stripe activation. */
   activationPreview?: boolean | null;
-  planCode?: "basic" | "reservation" | null;
+  planCode?: ProPlanCode | null;
   trialPeriodDays?: number | null;
   /** Public website origin captured by the portal before OAuth. */
   publicBaseUrl?: "https://glaura.ai" | "https://staging-1.glaura.ai" | null;
