@@ -1,18 +1,19 @@
 ---
 name: deploy-crm
-description: Deploy glaura-crm to the VPS — wait for the GitHub Actions image build, then pull ghcr.io/glaura-ai/glaura-crm:latest and roll the compose stack (web + onboarding-worker + email-worker) and verify. Use when asked to deploy the CRM, ship it, push it live, or release the current main.
+description: Deploy glaura-crm to the VPS — build the image on the host from main (scripts/build-on-server.sh), then roll the compose stack (web + onboarding-worker + email-worker) and verify. Use when asked to deploy the CRM, ship it, push it live, or release the current main.
 ---
 
 # Deploy glaura-crm
 
-Deploys whatever is on `main` to https://crm.glaura.ai. CI builds the image on
-every push to `main`; deploying is pull + `compose up -d`. Nothing is built on
-the server.
+Deploys whatever is on `main` to https://crm.glaura.ai. The image is built ON
+the host by `scripts/build-on-server.sh` (GitHub Actions minutes are no longer
+available, 2026-10-12); deploying is build + `compose up -d`, never
+`compose pull` (that would swap in the stale GHCR image).
 
 ## Facts about the target
 
-- VPS: `ssh root@204.168.167.79`, stack at `/opt/glaura/glaura-crm`
-- Image: `ghcr.io/glaura-ai/glaura-crm:latest`, built by `.github/workflows/build-image.yml`
+- VPS: `ssh root@188.245.250.151`, stack at `/opt/glaura/glaura-crm`
+- Image: `ghcr.io/glaura-ai/glaura-crm:latest`, built on the host by `scripts/build-on-server.sh` (local only, never pushed)
 - Run config: `docker-compose.yml` **in this repo** is the source of truth. Step 4 copies it up, so server-side edits are overwritten — change it here and merge
 - Env file: `/opt/glaura/glaura-crm/.env.docker` on the host, NOT in the repo (secrets). Not the older 26-key `.env` sitting next to it
   - `LAURA_LEAD_SECRET` — shared secret for `POST /api/leads/laura`, where the
@@ -38,7 +39,7 @@ the server.
 
 ```bash
 git status --short && git log --oneline -1
-gh run list --limit 3 --json databaseId,status,conclusion,headSha,workflowName
+npm run lint && npm test
 ```
 
 `main` must be pushed and the working tree clean — the image is built from the
@@ -46,18 +47,14 @@ GitHub commit, so uncommitted local work is NOT in the deploy. If the tree is
 dirty, stop and tell the user what is uncommitted rather than shipping a commit
 they think includes it.
 
-### 2. Wait for the image
-
-Match the run's `headSha` to the commit you are deploying. If it is
-`in_progress`:
+### 2. Build the image on the host
 
 ```bash
-gh run watch <databaseId> --exit-status
+bash scripts/build-on-server.sh        # origin/main; or pass a sha
 ```
 
-Roughly 2-4 minutes. Never deploy on a `failure` conclusion — `:latest` still
-points at the previous good image, so the pull would silently "succeed" while
-deploying nothing new.
+Roughly 3-5 minutes. It tags `:latest` (what compose runs) and `:sha-<sha>`.
+If it fails, `:latest` still points at the previous good image — do not deploy.
 
 ### 3. Check for schema changes
 
@@ -69,18 +66,17 @@ If anything under `prisma/migrations/` changed, run migrations BEFORE step 4 and
 tell the user first — this is not automatic:
 
 ```bash
-ssh root@204.168.167.79 'cd /opt/glaura/glaura-crm && docker compose run --rm --no-deps web npx prisma migrate deploy'
+ssh root@188.245.250.151 'cd /opt/glaura/glaura-crm && docker compose run --rm --no-deps web npx prisma migrate deploy'
 ```
 
 ### 4. Deploy
 
 ```bash
-scp docker-compose.yml root@204.168.167.79:/opt/glaura/glaura-crm/docker-compose.yml
-ssh root@204.168.167.79 'set -e
+scp docker-compose.yml root@188.245.250.151:/opt/glaura/glaura-crm/docker-compose.yml
+ssh root@188.245.250.151 'set -e
 cd /opt/glaura/glaura-crm
 docker compose config --quiet
-docker compose pull
-docker compose up -d'
+docker compose up -d --pull never'
 ```
 
 `up -d` recreates only what actually changed, and `config --quiet` fails fast on
@@ -89,7 +85,7 @@ a malformed file instead of half-rolling the stack.
 ### 5. Seed system email templates
 
 ```bash
-ssh root@204.168.167.79 'cd /opt/glaura/glaura-crm && docker compose run --rm --no-deps web npm run seed:system-email-templates'
+ssh root@188.245.250.151 'cd /opt/glaura/glaura-crm && docker compose run --rm --no-deps web npm run seed:system-email-templates'
 ```
 
 Publishes any bundled email template (welcome, pro preview/activation,
@@ -102,7 +98,7 @@ leaves a new template's emails silently unsendable.
 ### 6. Verify
 
 ```bash
-ssh root@204.168.167.79 'sleep 25
+ssh root@188.245.250.151 'sleep 25
 cd /opt/glaura/glaura-crm
 docker compose ps --format "{{.Name}}\t{{.Status}}"
 echo "--- http"; curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3102/login
@@ -118,13 +114,13 @@ feature works because containers are up — say what you actually checked.
 
 ## Rollback
 
-`:latest` is overwritten by each build, so roll back by digest. Find the
+`:latest` is overwritten by each build, so roll back to a previous `:sha-<sha>` tag. Find the
 previous image and pin it for one boot:
 
 ```bash
-ssh root@204.168.167.79 'docker images ghcr.io/glaura-ai/glaura-crm --format "{{.ID}}\t{{.Tag}}\t{{.CreatedAt}}"
+ssh root@188.245.250.151 'docker images ghcr.io/glaura-ai/glaura-crm --format "{{.ID}}\t{{.Tag}}\t{{.CreatedAt}}"
 cd /opt/glaura/glaura-crm
-CRM_IMAGE=ghcr.io/glaura-ai/glaura-crm@sha256:<digest> docker compose up -d'
+CRM_IMAGE=ghcr.io/glaura-ai/glaura-crm:sha-<previous sha> docker compose up -d --pull never'
 ```
 
 `CRM_IMAGE` is a one-boot override — it is not persisted, so the next deploy
@@ -140,7 +136,7 @@ in history and survives the next deploy.
   during the gap. Fine for an internal tool, but say so if a rep is mid-demo.
 - In-flight onboarding jobs die with the worker. A killed job stays `PROCESSING`
   and will not self-heal; check before deploying:
-  `ssh root@204.168.167.79 $'echo "SELECT id, status FROM \\"OnboardingJob\\" WHERE status IN (\'QUEUED\',\'PROCESSING\');" | su postgres -c "psql -d glaura_crm -f -"'`
+  `ssh root@188.245.250.151 $'echo "SELECT id, status FROM \\"OnboardingJob\\" WHERE status IN (\'QUEUED\',\'PROCESSING\');" | su postgres -c "psql -d glaura_crm -f -"'`
 - The config that is easy to lose and expensive to omit now lives in
   `docker-compose.yml` with comments explaining why: the onboarding worker's
   `user: root` + `firebase-adminsdk.json` bind mount, `network_mode: host`, and
