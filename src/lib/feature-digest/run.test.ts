@@ -62,7 +62,7 @@ describe("runDigest", () => {
     const r = await runDigest(d, { mode: "test", to: "henry@x.fr" });
     expect(d.send).toHaveBeenCalledTimes(1);
     expect(d.send).toHaveBeenCalledWith(
-      expect.objectContaining({ email: "henry@x.fr", sample: true }),
+      expect.objectContaining({ email: "henry@x.fr", sample: true, providerId: "test-sample" }),
     );
     expect(d.record).not.toHaveBeenCalled();
     expect(r.sent).toBe(1);

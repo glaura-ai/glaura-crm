@@ -36,7 +36,8 @@ export type DigestResult = {
 };
 
 const PREVIEW_SIZE = 20;
-const SAMPLE_PROVIDER_ID = "sample";
+/** Sentinel id for --to samples: its unsubscribe token never touches a real salon. */
+export const SAMPLE_PROVIDER_ID = "test-sample";
 
 export async function runDigest(deps: DigestDeps, options: DigestMode): Promise<DigestResult> {
   const empty = { total: deps.recipients.length, sent: 0, skipped: 0, failed: 0, preview: [] };

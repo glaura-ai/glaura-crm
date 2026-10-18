@@ -79,8 +79,7 @@ async function main() {
       delayMs: DELAY_MS,
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       send: async (job) => {
-        // Sample sends carry a valid (but unrecorded) token for the first recipient's id when available.
-        const tokenId = job.sample ? (recipients[0]?.providerId ?? "sample") : job.providerId;
+        const tokenId = job.providerId; // sentinel for --to samples
         const unsubscribeUrl = `${crm}/unsubscribe/salon?t=${encodeURIComponent(signUnsubscribeToken(tokenId, secret))}`;
         const { subject, html, text } = renderDigest({
           edition,
