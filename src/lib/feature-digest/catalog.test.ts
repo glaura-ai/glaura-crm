@@ -13,6 +13,12 @@ describe("catalog", () => {
     expect(catalogSchema.safeParse({ version: 1, features: [{ id: "a" }] }).success).toBe(false);
   });
 
+  it("requires emailImage on https images.glaura.ai", () => {
+    for (const bad of ["http://images.glaura.ai/a.gif", "https://evil.example/a.gif", "https://images.glaura.ai.evil.com/a.gif"]) {
+      expect(catalogSchema.safeParse({ version: 1, features: [{ ...f("a"), emailImage: bad }] }).success).toBe(false);
+    }
+  });
+
   it("picks features in the requested order, max 3, all must exist", () => {
     const cat = catalogSchema.parse({ version: 1, features: [f("a"), f("b"), f("c"), f("d")] });
     expect(pickFeatures(cat, ["c", "a"]).map((x) => x.id)).toEqual(["c", "a"]);

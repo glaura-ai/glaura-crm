@@ -12,7 +12,13 @@ const featureSchema = z.object({
   hintFr: z.string(),
   hintEn: z.string(),
   href: z.string().min(1),
-  emailImage: z.string().url(),
+  emailImage: z
+    .string()
+    .url()
+    .refine((u) => {
+      const url = new URL(u);
+      return url.protocol === "https:" && url.hostname === "images.glaura.ai";
+    }, "emailImage doit être en https sur images.glaura.ai"),
   video: z.string().optional(),
   poster: z.string().optional(),
 });

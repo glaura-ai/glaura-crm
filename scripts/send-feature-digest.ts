@@ -60,21 +60,11 @@ async function main() {
   let prisma: typeof import("../src/lib/db").prisma | null = null;
   if (mode.mode === "all") prisma = (await import("../src/lib/db")).prisma;
 
-  const sentProviderIds = new Set<string>();
-  if (prisma) {
-    const rows = await prisma.featureDigestSend.findMany({
-      where: { edition, sentAt: { not: null } },
-      select: { providerId: true },
-    });
-    rows.forEach((r) => sentProviderIds.add(r.providerId));
-  }
-
   const { sendEmail } = await import("../src/lib/email");
   const result = await runDigest(
     {
       edition,
       recipients,
-      sentProviderIds,
       batchSize: BATCH_SIZE,
       delayMs: DELAY_MS,
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
@@ -101,13 +91,39 @@ async function main() {
           },
         });
       },
-      record: async ({ edition: ed, providerId, email, sentAt, error }) => {
-        if (!prisma) return;
-        await prisma.featureDigestSend.upsert({
-          where: { edition_providerId: { edition: ed, providerId } },
-          create: { edition: ed, providerId, email, sentAt: sentAt ?? null, error: error ?? null },
-          update: { email, sentAt: sentAt ?? null, error: error ?? null },
+      claim: async (r) => {
+        if (!prisma) return false;
+        try {
+          await prisma.featureDigestSend.create({ data: { edition, providerId: r.providerId, email: r.email } });
+          return true;
+        } catch (err) {
+          if ((err as { code?: string }).code !== "P2002") throw err;
+          // Row exists: retry only a previously failed one (atomic, so racing runs cannot both win).
+          const { count } = await prisma.featureDigestSend.updateMany({
+            where: { edition, providerId: r.providerId, sentAt: null, error: { not: null } },
+            data: { error: null },
+          });
+          return count === 1;
+        }
+      },
+      markSent: async (r) => {
+        await prisma?.featureDigestSend.update({
+          where: { edition_providerId: { edition, providerId: r.providerId } },
+          data: { sentAt: new Date() },
         });
+      },
+      markFailed: async (r, error) => {
+        await prisma?.featureDigestSend.updateMany({
+          where: { edition, providerId: r.providerId, sentAt: null },
+          data: { error },
+        });
+      },
+      optedOut: async (ids) => {
+        const refs = ids.map((id) => getDb().collection("userProfile").doc(id));
+        const snaps = await getDb().getAll(...refs);
+        return new Set(
+          snaps.filter((d) => d.get("featureAnnouncements.emailOptOut") === true).map((d) => d.id),
+        );
       },
     },
     mode,
