@@ -23,6 +23,7 @@
     "prospect:ig": "tsx scripts/prospect-enrich-ig.ts",
     "prospect:google": "tsx scripts/prospect-enrich-google.ts",
     "prospect:test": "tsx scripts/prospect-test.ts",
+    "digest:send": "tsx scripts/send-feature-digest.ts",
     "test": "vitest run"
   },
   "dependencies": {

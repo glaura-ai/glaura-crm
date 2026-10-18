@@ -454,3 +454,18 @@ model OnboardingJobEvent {
   @@index([jobId, createdAt])
   @@index([type])
 }
+
+/// One row per (edition, salon) of the monthly feature digest; sentAt set means delivered.
+model FeatureDigestSend {
+  id         String    @id @default(cuid())
+  edition    String
+  providerId String
+  email      String
+  sentAt     DateTime?
+  error      String?   @db.Text
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([edition, providerId])
+  @@index([edition])
+}
