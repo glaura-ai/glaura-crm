@@ -135,7 +135,7 @@ async function main() {
     result.preview.forEach((r) => console.log(`  ${r.providerId}  ${r.email}  ${r.salonName}`));
     console.log("Dry run: nothing sent.");
   } else {
-    console.log(`sent ${result.sent} · skipped ${result.skipped} · failed ${result.failed}`);
+    console.log(`sent ${result.sent} · skipped ${result.skipped} · failed ${result.failed} · sent-but-unrecorded ${result.unrecorded}`);
   }
   await prisma?.$disconnect();
 }
