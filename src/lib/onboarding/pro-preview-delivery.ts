@@ -13,6 +13,7 @@ import {
   type ProPreviewService,
 } from "@/lib/onboarding/pro-preview";
 import { privateMediaObjectPath, toInlineHeroDataUri } from "@/lib/onboarding/pro-preview-image";
+import { smsRelayHeaders } from "@/lib/backend-relay";
 
 const ACTIVATION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -169,7 +170,7 @@ async function sendPreviewSms(phone: string, salonName: string, previewUrl: stri
     try {
       const response = await fetch(endpoint, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: smsRelayHeaders(),
         body: JSON.stringify({
           To: phone.trim(),
           Body: `La page Glaura de ${salonName} est prête : ${previewUrl}`,
