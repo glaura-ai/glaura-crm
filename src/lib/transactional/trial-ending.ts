@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { renderTemplate } from "@/lib/emailTemplates";
+import { smsRelayHeaders } from "@/lib/backend-relay";
 
 export const PRO_TRIAL_ENDING_TEMPLATE_KEY = "PRO_TRIAL_ENDING";
 
@@ -128,7 +129,7 @@ export async function sendTrialEndingSms(phone: string, data: TrialEndingData): 
     try {
       const response = await fetch(endpoint, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: smsRelayHeaders(),
         body: JSON.stringify({ To: phone.trim(), Body: trialEndingSmsBody(data) }),
         cache: "no-store",
         signal: AbortSignal.timeout(10_000),
