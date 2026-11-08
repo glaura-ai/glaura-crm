@@ -33,7 +33,20 @@ Les traitements sont mis en file depuis **Prospection → Collecte et enrichisse
 
 La déduplication compare les URLs, les identifiants Google, les comptes Instagram et les noms normalisés avec code postal lorsqu’ils sont disponibles. Elle évite les doublons détectables lors des nouvelles collectes ; elle ne fusionne pas automatiquement les anciennes fiches ambiguës.
 
-## Connexion de la messagerie Instagram
+## Connexion Firebase existante de Glaura
+
+La connexion recommandée réutilise le compte prestataire Glaura de Firebase :
+
+```dotenv
+CRM_INSTAGRAM_PROVIDER_ID=<UID du prestataire Glaura connecté à glaura.app>
+```
+
+Le CRM vérifie que ce profil est connecté à `glaura.app`, lit son jeton dans le coffre privé `prod-eu/instagramCredentials/{providerId}` et utilise `graph.instagram.com`, comme le backend Firebase. Le renouvellement du jeton et le webhook existant restent gérés par Firebase. Aucun jeton n’est copié dans la configuration du CRM, aucun nouveau webhook Meta n’est nécessaire. L’accès au coffre utilise le compte de service Firebase déjà monté sur le serveur ; aucune règle cliente Firestore n’est modifiée.
+
+`npm run instagram:sync` importe l’historique disponible via Meta puis les messages déjà enregistrés dans Firebase. Le service de prospection récupère ensuite les nouvelles réceptions toutes les 30 secondes, uniquement pour ce prestataire. Les fils WhatsApp et Glaura présents dans la même collection sont exclus. L’écran privé se rafraîchit toutes les 30 secondes. L’accès reste réservé au compte défini par `CRM_INSTAGRAM_ADMIN_EMAIL`.
+
+## Autre connexion : Facebook Login
+
 
 Cette intégration utilise **Instagram API avec Facebook Login**, compatible avec le compte professionnel déjà utilisé pour l’enrichissement. La connexion de découverte de profils seule n’accorde pas les permissions de messages.
 

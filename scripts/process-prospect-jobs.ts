@@ -5,6 +5,8 @@ loadEnvConfig(process.cwd());
 
 async function main() {
   const { prisma } = await import("../src/lib/db");
+  const { startFirebaseInboxSync } = await import("../src/lib/instagram-inbox/firebase-sync");
+  const stopInboxSync = process.argv.includes("--loop") ? startFirebaseInboxSync() : () => {};
   const { ZONE_BY_SLUG } = await import("../src/lib/prospection/zones");
   const scripts: Record<string, string> = { DIRECTORIES: "scripts/prospect-sweep.ts", GOOGLE: "scripts/prospect-enrich-google.ts", INSTAGRAM: "scripts/prospect-enrich-ig.ts" };
   do {
@@ -44,6 +46,7 @@ async function main() {
       await prisma.prospectRun.update({ where: { id: run.id }, data: { status: "FAILED", finishedAt: new Date(), summary: "Le traitement n’a pas abouti. Vérifiez la connexion du fournisseur et les journaux du service. Les résultats déjà enregistrés sont conservés." } });
     } finally { if (timer) clearInterval(timer); }
   } while (true);
+  stopInboxSync();
   await prisma.$disconnect();
 }
 main().catch(() => { console.error("Le service de prospection a rencontré une erreur."); process.exitCode = 1; });

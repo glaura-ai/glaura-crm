@@ -27,7 +27,8 @@
     "test": "vitest run",
     "prospect:jobs": "tsx scripts/process-prospect-jobs.ts",
     "prospect:worker": "tsx scripts/process-prospect-jobs.ts --loop",
-    "dev:setup": "tsx scripts/setup-local.ts"
+    "dev:setup": "tsx scripts/setup-local.ts",
+    "instagram:sync": "tsx scripts/sync-instagram-inbox.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
