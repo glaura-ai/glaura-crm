@@ -68,7 +68,7 @@ function toBusiness(node: JsonObject): RawBusiness | null {
     rating: asNumber(ratingNode.ratingValue),
     reviewCount: reviewCount == null ? null : Math.round(reviewCount),
     street: asString(address.streetAddress),
-    postalCode: asString(address.postalCode),
+    postalCode: asString(address.postalCode) ?? asString(address.streetAddress)?.match(/\b\d{5}\b/)?.[0] ?? null,
     city: asString(address.addressLocality),
   };
 }

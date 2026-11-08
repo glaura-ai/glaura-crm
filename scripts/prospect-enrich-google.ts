@@ -112,6 +112,7 @@ async function main() {
     } catch (error) {
       if (error instanceof PlacesAuthError || error instanceof PlacesQuotaError) {
         console.error(`[google] arrêt: ${error.message}`);
+        process.exitCode = 1;
         break;
       }
       failed++;

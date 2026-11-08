@@ -1,3 +1,4 @@
+import { frenchDate } from "@/lib/crm-format";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
@@ -16,9 +17,9 @@ const statusStyle = {
 const statusLabel = {
   QUEUED: "En file",
   PROCESSING: "En cours",
-  DONE: "Termine",
-  FAILED: "Echec",
-  ALREADY_ONBOARDED: "Deja pret",
+  DONE: "Terminé",
+  FAILED: "Échec",
+  ALREADY_ONBOARDED: "Déjà prêt",
   REVIEW_REQUIRED: "À vérifier",
 } as const;
 
@@ -39,7 +40,7 @@ export default async function OnboardingMonitorPage({
     <div className="mx-auto max-w-7xl p-6">
       <div className="mb-5 flex items-end justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-rose-500">Monitoring onboarding</p>
+          <p className="text-sm font-medium text-rose-500">Suivi des activations</p>
           <h1 className="mt-1 text-3xl font-semibold text-slate-900">Performance Claude</h1>
         </div>
         <Link href="/salons" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
@@ -48,9 +49,9 @@ export default async function OnboardingMonitorPage({
       </div>
 
       <section className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        <Metric label="Jobs 30j" value={monitor.metrics.total30d} />
+        <Metric label="Traitements sur 30 jours" value={monitor.metrics.total30d} />
         <Metric label="Succes" value={`${monitor.metrics.successRate30d}%`} tone="text-emerald-600" />
-        <Metric label="Echecs" value={monitor.metrics.failed30d} tone="text-rose-600" />
+        <Metric label="Échecs" value={monitor.metrics.failed30d} tone="text-rose-600" />
         <Metric label="En cours" value={monitor.metrics.processing30d} tone="text-sky-600" />
         <Metric label="p50" value={formatDuration(monitor.metrics.p50DurationMs)} />
         <Metric label="p95" value={formatDuration(monitor.metrics.p95DurationMs)} />
@@ -59,8 +60,8 @@ export default async function OnboardingMonitorPage({
       <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.9fr)]">
         <div className={card}>
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Derniers jobs</h2>
-            <span className="text-xs text-slate-400">{monitor.jobs.length} affiches</span>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Derniers traitements</h2>
+            <span className="text-xs text-slate-400">{monitor.jobs.length} affichés</span>
           </div>
           <div className="overflow-hidden rounded-lg border border-slate-200">
             <table className="w-full table-fixed divide-y divide-slate-200 text-left text-sm">
@@ -81,7 +82,7 @@ export default async function OnboardingMonitorPage({
                       <Link href={`/onboarding?job=${job.id}`} className="font-medium text-slate-900 hover:text-rose-600">
                         {job.salon.name}
                       </Link>
-                      <div className="mt-1 text-xs text-slate-400">{new Date(job.createdAt).toLocaleString("fr-FR")}</div>
+                      <div className="mt-1 text-xs text-slate-400">{frenchDate(job.createdAt, true)}</div>
                     </td>
                     <td className="px-3 py-3">
                       <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold ring-1", statusStyle[job.status])}>{statusLabel[job.status]}</span>
@@ -89,14 +90,14 @@ export default async function OnboardingMonitorPage({
                     <td className="px-3 py-3 text-slate-600">{formatDuration(job.durationMs)}</td>
                     <td className="px-3 py-3 text-slate-600">
                       <div>{job.exitCode == null ? "-" : `code ${job.exitCode}`}</div>
-                      <div className="text-xs text-slate-400">{job.eventCount} events</div>
+                      <div className="text-xs text-slate-400">{job.eventCount } évènements</div>
                     </td>
                     <td className="px-3 py-3 text-slate-600">
                       {job.serviceCount ?? 0} / {job.agentCount ?? 0}
                     </td>
                     <td className="px-3 py-3 text-slate-600">
                       <div className="truncate">{job.requestedBy?.name ?? job.requestedBy?.email ?? "-"}</div>
-                      <div className="truncate text-xs text-slate-400">{job.salon.assignedTo?.name ?? job.salon.assignedTo?.email ?? "Non assigne"}</div>
+                      <div className="truncate text-xs text-slate-400">{job.salon.assignedTo?.name ?? job.salon.assignedTo?.email ?? "Non attribué"}</div>
                     </td>
                   </tr>
                 ))}
@@ -108,7 +109,7 @@ export default async function OnboardingMonitorPage({
         <div className={card}>
           <div className="mb-3 flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Trace du job</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Journal du traitement</h2>
               {selected && (
                 <Link href={`/salons/${selected.salon.id}`} className="mt-1 block text-base font-semibold text-slate-900 hover:text-rose-600">
                   {selected.salon.name}
@@ -119,16 +120,16 @@ export default async function OnboardingMonitorPage({
           </div>
 
           {!selected ? (
-            <p className="text-sm text-slate-400">Aucun job onboarding.</p>
+            <p className="text-sm text-slate-400">Aucune activation.</p>
           ) : events.length === 0 ? (
-            <p className="text-sm text-slate-400">Aucun evenement persiste pour ce job.</p>
+            <p className="text-sm text-slate-400">Aucun évènement enregistré pour ce traitement.</p>
           ) : (
             <ol className="max-h-[720px] space-y-2 overflow-y-auto pr-1">
               {events.map((event) => (
                 <li key={event.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
                   <div className="mb-1 flex items-center justify-between gap-2 text-slate-400">
                     <span className="font-mono">#{event.sequence} {event.stream}{event.type ? ` / ${event.type}` : ""}</span>
-                    <span>{new Date(event.createdAt).toLocaleTimeString("fr-FR")}</span>
+                    <span>{frenchDate(event.createdAt, true)}</span>
                   </div>
                   {event.text ? (
                     <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words font-sans text-sm leading-5 text-slate-700">{event.text}</pre>

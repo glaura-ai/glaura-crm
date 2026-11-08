@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import { requireAdmin } from "@/lib/access";
 import { prisma } from "@/lib/db";
 import { isDailyPriorityActive, startOfDay } from "@/lib/dailyPriority";
 import { geocodeAddress } from "@/lib/geocode";
@@ -175,9 +176,15 @@ export async function updateSalon(id: string, fd: FormData) {
   const assignedToId = me.role === "ADMIN" ? optionalString(fd.get("assignedToId")) : undefined;
   // "Priorité du jour" checkbox: present → keep/pin for today, absent → clear.
   const priorityDate = fd.has("priorityToday") ? startOfDay() : null;
-  await prisma.salon.update({
-    where: { id },
-    data: { ...d, slug: await uniqueSlug(d.name, id), priorityDate, ...(assignedToId ? { assignedToId } : {}) },
+  if (assignedToId && !await prisma.user.findFirst({ where: { id: assignedToId, active: true } })) throw new Error("Le responsable doit être un membre actif.");
+  const slug = await uniqueSlug(d.name, id);
+  await prisma.$transaction(async tx => {
+    await tx.salon.update({ where: { id }, data: { ...d, slug, priorityDate, ...(assignedToId ? { assignedToId } : {}) } });
+    if (assignedToId) {
+      await tx.salesTask.updateMany({ where: { salonId: id, doneAt: null }, data: { assignedToId } });
+      await tx.reminder.updateMany({ where: { salonId: id, done: false }, data: { userId: assignedToId } });
+      await tx.prospect.updateMany({ where: { salonId: id }, data: { assignedToId } });
+    }
   });
   revalidatePath(`/salons/${id}`);
   revalidatePath("/salons");
@@ -241,7 +248,8 @@ export async function addReminder(salonId: string, fd: FormData) {
   const title = (fd.get("title") || "").toString().trim();
   const dueAt = new Date((fd.get("dueAt") || "").toString());
   if (!title || isNaN(dueAt.getTime())) return;
-  await prisma.reminder.create({ data: { salonId, userId: me.id, title, dueAt } });
+  const salon = await prisma.salon.findUniqueOrThrow({ where: { id: salonId }, select: { assignedToId: true } });
+  await prisma.reminder.create({ data: { salonId, userId: salon.assignedToId ?? me.id, title, dueAt } });
   await prisma.salon.update({ where: { id: salonId }, data: { nextActionAt: dueAt, priorityDate: null } });
   revalidatePath(`/salons/${salonId}`);
   revalidatePath("/salons");
@@ -251,12 +259,13 @@ export async function addReminder(salonId: string, fd: FormData) {
 export async function completeReminder(reminderId: string, salonId: string) {
   await assertCanAccessSalon(salonId);
   await prisma.$transaction([
-    prisma.reminder.update({ where: { id: reminderId }, data: { done: true, doneAt: new Date() } }),
+    prisma.reminder.update({ where: { id: reminderId, salonId }, data: { done: true, doneAt: new Date() } }),
     prisma.salon.update({ where: { id: salonId }, data: { priorityDate: null } }),
   ]);
   revalidatePath(`/salons/${salonId}`);
   revalidatePath("/salons");
   revalidatePath("/dashboard");
+  revalidatePath("/taches");
 }
 
 const emailJobSchema = z.object({
@@ -392,7 +401,7 @@ export type UploadEmailImageResult = { ok: true; url: string } | { ok: false; er
  * author needs to read. Open to any signed-in user, like editing a template.
  */
 export async function uploadEmailImage(fd: FormData): Promise<UploadEmailImageResult> {
-  await requireCurrentUser();
+  await requireAdmin();
 
   const file = fd.get("file");
   if (!file || typeof file === "string") return { ok: false, error: "Aucun fichier" };
@@ -406,7 +415,7 @@ export async function uploadEmailImage(fd: FormData): Promise<UploadEmailImageRe
 }
 
 export async function createEmailTemplate(fd: FormData) {
-  const user = await requireCurrentUser();
+  const user = await requireAdmin();
   const payload = parseTemplateForm(fd);
 
   // New templates land at the end of the dropdown rather than silently ahead of
@@ -429,7 +438,7 @@ export async function createEmailTemplate(fd: FormData) {
 }
 
 export async function updateEmailTemplate(id: string, fd: FormData) {
-  await requireCurrentUser();
+  await requireAdmin();
   const payload = parseTemplateForm(fd);
 
   // `key` is deliberately not updated — EmailJob rows snapshot it.
@@ -443,7 +452,7 @@ export async function updateEmailTemplate(id: string, fd: FormData) {
 
 /** Soft delete: drops the template from the dropdown, keeps past jobs joinable. */
 export async function archiveEmailTemplate(id: string) {
-  await requireCurrentUser();
+  await requireAdmin();
 
   const remaining = await prisma.emailTemplate.count({ where: { archivedAt: null } });
   if (remaining <= 1) throw new Error("Impossible d'archiver le dernier modèle — il en faut au moins un.");
@@ -453,7 +462,7 @@ export async function archiveEmailTemplate(id: string) {
 }
 
 export async function restoreEmailTemplate(id: string) {
-  await requireCurrentUser();
+  await requireAdmin();
   await prisma.emailTemplate.update({ where: { id }, data: { archivedAt: null } });
   revalidatePath("/modeles");
 }
@@ -570,9 +579,10 @@ export async function revealOnboardingPassword(jobId: string): Promise<RevealPas
 
   const job = await prisma.onboardingJob.findUnique({
     where: { id: jobId },
-    select: { id: true, loginPassword: true },
+    select: { id: true, loginPassword: true, salon: { select: { assignedToId: true } } },
   });
   if (!job) return { ok: false, error: "Job d'onboarding introuvable" };
+  if (user.role !== "ADMIN" && job.salon.assignedToId !== user.id) return { ok: false, error: "Accès réservé au commercial responsable du salon." };
   if (!job.loginPassword) return { ok: false, error: "Aucun mot de passe enregistré pour ce job" };
 
   let password: string;

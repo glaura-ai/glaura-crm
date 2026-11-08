@@ -104,7 +104,7 @@ export function EmailFollowUpForm({ action, salon, templates, onboardingValues }
           ) : (
             <>
               <p>
-                Email HTML — identifiants insérés à l&apos;envoi depuis le job d&apos;onboarding.
+                Email HTML — identifiants insérés à l&apos;envoi depuis le traitement d’activation.
                 <span className="text-slate-400"> Modifiable dans </span>
                 <Link href="/modeles" className="font-semibold text-rose-600 hover:underline">Modèles</Link>.
               </p>

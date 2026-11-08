@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { activeDailyPriorityDateFilter } from "@/lib/dailyPriority";
 import { phoneSearchTerm } from "@/lib/phone";
-import type { LeadSource, Metier, SalonStatus, SalonType } from "@/generated/prisma/enums";
+import { LeadSource, Metier, SalonStatus, SalonType } from "@/generated/prisma/enums";
 
 export type ViewerScope = {
   id: string;
@@ -17,6 +17,7 @@ export type SalonFilters = {
   source?: string; // "SCRAPE" → salons converted from prospecting
   prio?: string; // "today" → active daily priorities, including carried-over pins
   q?: string;
+  page?: string;
 };
 
 function scopedOwnerId(f: SalonFilters, viewer?: ViewerScope): string | undefined {
@@ -42,21 +43,20 @@ async function salonIdsMatchingPhone(term: string): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
-export async function getSalons(f: SalonFilters, viewer?: ViewerScope) {
+async function salonWhere(f: SalonFilters, viewer: ViewerScope): Promise<import("@/generated/prisma/client").Prisma.SalonWhereInput> {
   const q = f.q?.trim();
   const ownerId = scopedOwnerId(f, viewer);
   const phoneTerm = q ? phoneSearchTerm(q) : null;
   const phoneMatchIds = phoneTerm ? await salonIdsMatchingPhone(phoneTerm) : [];
-  return prisma.salon.findMany({
-    where: {
+  return {
       // Merged duplicates stay in the table but out of the pipeline.
       archivedAt: null,
-      ...(f.status ? { status: f.status as SalonStatus } : {}),
-      ...(f.metier ? { metier: { has: f.metier as Metier } } : {}),
-      ...(f.type ? { type: f.type as SalonType } : {}),
+      ...(f.status && Object.values(SalonStatus).includes(f.status as SalonStatus) ? { status: f.status as SalonStatus } : {}),
+      ...(f.metier && Object.values(Metier).includes(f.metier as Metier) ? { metier: { has: f.metier as Metier } } : {}),
+      ...(f.type && Object.values(SalonType).includes(f.type as SalonType) ? { type: f.type as SalonType } : {}),
       ...(ownerId ? { assignedToId: ownerId } : {}),
       ...(f.arr ? { arrondissement: f.arr } : {}),
-      ...(f.source ? { source: f.source as LeadSource } : {}),
+      ...(f.source && Object.values(LeadSource).includes(f.source as LeadSource) ? { source: f.source as LeadSource } : {}),
       ...(f.prio === "today" ? { priorityDate: activeDailyPriorityDateFilter() } : {}),
       ...(q
         ? {
@@ -71,10 +71,19 @@ export async function getSalons(f: SalonFilters, viewer?: ViewerScope) {
             ],
           }
         : {}),
-    },
-    orderBy: { updatedAt: "desc" },
-    include: { assignedTo: { select: { id: true, name: true, email: true } } },
+  };
+}
+
+export async function getSalons(f: SalonFilters, viewer: ViewerScope) {
+  const where = await salonWhere(f, viewer);
+  const page = Math.max(1, Math.min(100000, Number.parseInt(f.page ?? "", 10) || 1));
+  return prisma.salon.findMany({ where, skip: (page - 1) * 50, take: 50,
+    orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+    include: { assignedTo: { select: { id: true, name: true, email: true } }, tasks: { where: { doneAt: null }, orderBy: { dueAt: "asc" }, take: 1, select: { title: true, dueAt: true } } },
   });
+}
+export async function getSalonCount(f: SalonFilters, viewer: ViewerScope) {
+  return prisma.salon.count({ where: await salonWhere(f, viewer) });
 }
 
 export type SalonListItem = Awaited<ReturnType<typeof getSalons>>[number];
@@ -86,6 +95,7 @@ export async function getSalon(id: string, viewer?: ViewerScope) {
       ...(viewer && viewer.role !== "ADMIN" ? { assignedToId: viewer.id } : {}),
     },
     include: {
+      prospect: { select: { treatwellUrl: true, planityUrl: true, dualPlatformCheckedAt: true } },
       assignedTo: { select: { name: true, email: true } },
       activities: { orderBy: { createdAt: "desc" }, include: { user: { select: { name: true } } } },
       reminders: { orderBy: [{ done: "asc" }, { dueAt: "asc" }] },

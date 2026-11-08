@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { auth } from "@/auth";
+import { requireMember } from "@/lib/access";
 import { SalonForm } from "@/components/SalonForm";
 import { updateSalon } from "@/lib/actions";
 import { isDailyPriorityActive } from "@/lib/dailyPriority";
@@ -8,7 +8,7 @@ import { getSalon, getAssignableUsers } from "@/lib/salons";
 
 export default async function EditSalonPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await auth();
+  const session = { user: await requireMember() };
   const me = session?.user;
   const isAdmin = me?.role === "ADMIN";
   const [salon, assignableUsers] = await Promise.all([

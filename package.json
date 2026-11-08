@@ -24,7 +24,10 @@
     "prospect:google": "tsx scripts/prospect-enrich-google.ts",
     "prospect:test": "tsx scripts/prospect-test.ts",
     "digest:send": "tsx scripts/send-feature-digest.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prospect:jobs": "tsx scripts/process-prospect-jobs.ts",
+    "prospect:worker": "tsx scripts/process-prospect-jobs.ts --loop",
+    "dev:setup": "tsx scripts/setup-local.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",

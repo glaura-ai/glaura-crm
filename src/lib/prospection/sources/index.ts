@@ -8,7 +8,7 @@ import type { Zone } from "@/lib/prospection/zones";
 
 export const ALL_SOURCES: ProspectSource[] = ["TREATWELL", "PLANITY", "BOOKSY", "FRESHA"];
 
-const BUILDERS: Record<ProspectSource, (zones: Zone[]) => SweepTarget[]> = {
+const BUILDERS: Partial<Record<ProspectSource, (zones: Zone[]) => SweepTarget[]>> = {
   TREATWELL: treatwellTargets,
   PLANITY: planityTargets,
   BOOKSY: booksyTargets,
@@ -16,5 +16,5 @@ const BUILDERS: Record<ProspectSource, (zones: Zone[]) => SweepTarget[]> = {
 };
 
 export function buildTargets(sources: ProspectSource[], zones: Zone[]): SweepTarget[] {
-  return sources.flatMap((source) => BUILDERS[source](zones));
+  return sources.flatMap((source) => (BUILDERS[source]?.(zones) ?? []));
 }

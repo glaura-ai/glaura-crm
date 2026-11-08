@@ -11,6 +11,9 @@ import { zoneForPostalCode } from "@/lib/prospection/zones";
 export type CrawledProspect = {
   source: ProspectSource;
   sourceUrl: string;
+  treatwellUrl?: string;
+  planityUrl?: string;
+  dualPlatformCheckedAt?: Date;
   name: string;
   zone: string | null;
   metiers: Metier[];

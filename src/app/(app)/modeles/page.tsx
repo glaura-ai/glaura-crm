@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/access";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
@@ -9,7 +10,7 @@ import { archiveEmailTemplate, createEmailTemplate, restoreEmailTemplate, update
 const card = "rounded-xl border border-slate-300 bg-white p-5 shadow-sm";
 
 /**
- * Org-wide email templates. Editing is open to any signed-in user, so this page
+ * Org-wide email templates. Editing is restricted to administrators, so this page
  * is intentionally plain: one list, one form, no per-user drafts. `?edit=<id>`
  * and `?new=1` drive which editor is open rather than client state, which keeps
  * a half-written template out of the way of a page refresh.
@@ -19,6 +20,7 @@ export default async function EmailTemplatesPage({
 }: {
   searchParams: Promise<{ edit?: string; new?: string }>;
 }) {
+  await requireAdmin();
   const session = await auth();
   if (!session?.user?.id) notFound();
 

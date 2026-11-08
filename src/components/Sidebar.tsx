@@ -1,63 +1,14 @@
 import Link from "next/link";
 import { signOut } from "@/auth";
+import { canAccessInstagram } from "@/lib/access";
 
-function Icon({ d }: { d: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
-      <path d={d} />
-    </svg>
-  );
-}
-
-const ICONS = {
-  dashboard: "M3 12l9-9 9 9M5 10v10h5v-6h4v6h5V10",
-  salons: "M4 6h16M4 12h16M4 18h16",
-  prospection: "M12 21s-7-5.5-7-11a7 7 0 0114 0c0 5.5-7 11-7 11zM12 12a2 2 0 100-4 2 2 0 000 4z",
-  onboarding: "M4 19V5M4 19h16M8 15l3-3 3 2 5-7",
-  templates: "M3 8l9 6 9-6M5 5h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z",
-  calendar: "M8 2v4M16 2v4M3 9h18M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z",
-};
-
-export function Sidebar({ user }: { user: { name?: string | null; email?: string | null; image?: string | null; role?: string | null } }) {
-  const initial = (user.name || user.email || "?").charAt(0).toUpperCase();
-  const isAdmin = user.role === "ADMIN";
-  return (
-    <aside className="flex w-16 flex-col items-center gap-1 border-r border-slate-200 bg-white py-4">
-      <Link href="/dashboard" className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-rose-500 text-lg font-bold text-white">
-        G
-      </Link>
-      <Link href="/dashboard" title="Tableau de bord" className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900">
-        <Icon d={ICONS.dashboard} />
-      </Link>
-      <Link href="/salons" title="Salons" className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900">
-        <Icon d={ICONS.salons} />
-      </Link>
-      <Link href="/prospection" title="Prospection" className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900">
-        <Icon d={ICONS.prospection} />
-      </Link>
-      <Link href="/modeles" title="Modèles d'email" className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900">
-        <Icon d={ICONS.templates} />
-      </Link>
-      {isAdmin && (
-        <Link href="/onboarding" title="Monitoring onboarding" className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900">
-          <Icon d={ICONS.onboarding} />
-        </Link>
-      )}
-      <div className="mt-auto flex flex-col items-center gap-2">
-        <div title={user.email ?? ""} className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-700">
-          {initial}
-        </div>
-        <form
-          action={async () => {
-            "use server";
-            await signOut({ redirectTo: "/login" });
-          }}
-        >
-          <button title="Se déconnecter" className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-rose-600">
-            <Icon d="M16 17l5-5-5-5M21 12H9M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
-          </button>
-        </form>
-      </div>
-    </aside>
-  );
+export function Sidebar({ user }: { user: { name?: string | null; email?: string | null; role?: string } }) {
+  const admin = user.role === "ADMIN";
+  const links = [
+    ["/dashboard", "Aujourd’hui", "◷"], ["/taches", admin ? "Tâches de l’équipe" : "Mes tâches", "✓"],
+    ["/prospection", admin ? "Prospection" : "Mes prospects", "⌕"], ["/salons", "Salons et suivi", "▤"],
+    ...(canAccessInstagram(user) ? [["/instagram", "Messagerie Instagram", "◎"]] : []),
+    ...(admin ? [["/modeles", "Modèles d’email", "✉"], ["/onboarding", "Suivi des activations", "↗"], ["/administration", "Équipe et accès", "⚙"]] : []),
+  ];
+  return <aside className="sticky top-0 flex h-screen w-16 shrink-0 flex-col border-r border-slate-200 bg-white p-2 lg:w-60 lg:p-4"><Link href="/dashboard" className="mb-7 mt-2 flex items-center gap-3 px-1"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-600 text-xl font-bold text-white">G</span><span className="hidden text-lg font-semibold tracking-tight text-slate-950 lg:inline">Glaura <span className="text-slate-400">CRM</span></span></Link><nav aria-label="Navigation principale" className="flex flex-col gap-1">{links.map(([href, label, icon]) => <Link key={href} href={href} title={label} className="flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-rose-50 hover:text-rose-700"><span aria-hidden className="w-5 shrink-0 text-center text-lg">{icon}</span><span className="hidden lg:inline">{label}</span></Link>)}</nav><div className="mt-auto border-t border-slate-100 pt-4"><div className="mb-3 hidden px-3 lg:block"><p className="truncate text-sm font-medium text-slate-900">{user.name ?? user.email}</p><p className="mt-1 text-xs text-slate-400">{admin ? "Administration" : "Espace commercial"}</p></div><form action={async () => { "use server"; await signOut({ redirectTo: "/login" }); }}><button title="Se déconnecter" className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-100"><span aria-hidden>↪</span><span className="ml-3 hidden lg:inline">Se déconnecter</span></button></form></div></aside>;
 }

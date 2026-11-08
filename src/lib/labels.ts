@@ -67,6 +67,8 @@ export const BOOKING_LABEL: Record<BookingTool, string> = {
 };
 
 export const PROSPECT_SOURCE_LABEL: Record<ProspectSource, string> = {
+  GOOGLE: "Google",
+  INSTAGRAM: "Instagram",
   PLANITY: "Planity",
   TREATWELL: "Treatwell",
   BOOKSY: "Booksy",
@@ -74,6 +76,8 @@ export const PROSPECT_SOURCE_LABEL: Record<ProspectSource, string> = {
 };
 
 export const PROSPECT_SOURCE_STYLE: Record<ProspectSource, string> = {
+  GOOGLE: "bg-sky-50 text-sky-700",
+  INSTAGRAM: "bg-violet-50 text-violet-700",
   PLANITY: "bg-indigo-100 text-indigo-700",
   TREATWELL: "bg-orange-100 text-orange-700",
   BOOKSY: "bg-teal-100 text-teal-700",
