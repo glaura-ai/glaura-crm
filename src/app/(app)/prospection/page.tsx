@@ -1,152 +1,67 @@
+import { InstagramCandidates } from "@/components/prospection/InstagramCandidates";
+import { randomUUID } from "node:crypto";
+import Link from "next/link";
+import { requireMember } from "@/lib/access";
 import { getAssignableUsers } from "@/lib/salons";
-import { generateTournee } from "@/lib/prospection/actions";
-import { getProspectionStats, getTodaysTournees, getZoneAvailability } from "@/lib/prospection/queries";
-import { zoneLabel } from "@/lib/prospection/zones";
+import { assignProspects, convertProspect, discardProspect, generateTournee, releaseProspect } from "@/lib/prospection/actions";
+import { getProspectPool, getTodaysTournees, PROSPECT_STATUS_LABEL } from "@/lib/prospection/queries";
+import { ZONES, zoneLabel } from "@/lib/prospection/zones";
+import { TIER_LABEL } from "@/lib/prospection/tier";
 import { ProspectCard } from "@/components/prospection/ProspectCard";
+import { ProspectSelection } from "@/components/prospection/ProspectSelection";
+import { SubmitButton } from "@/components/SubmitButton";
+import { frenchDate, parisDateInput } from "@/lib/crm-format";
+import { queueProspectRun } from "@/lib/prospection/run-actions";
+import { prisma } from "@/lib/db";
 
-const DEPT_LABEL: Record<string, string> = {
-  "75": "Paris",
-  "92": "Hauts-de-Seine",
-  "93": "Seine-Saint-Denis",
-  "94": "Val-de-Marne",
-};
+const input = "rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900";
+const button = "rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700";
 
-export default async function ProspectionPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | undefined>>;
-}) {
+export default async function ProspectionPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const user = await requireMember();
+  const admin = user.role === "ADMIN";
   const sp = await searchParams;
-  const [zones, tournees, stats, users] = await Promise.all([
-    getZoneAvailability(),
-    getTodaysTournees(),
-    getProspectionStats(),
-    getAssignableUsers(),
+  const tab = admin && sp.tab === "runs" ? "runs" : sp.tab === "rounds" ? "rounds" : "pool";
+  const [pool, users, rounds, runs] = await Promise.all([
+    getProspectPool(user, sp), admin ? getAssignableUsers() : Promise.resolve([]),
+    tab === "rounds" ? getTodaysTournees(new Date(), admin ? undefined : user.id) : Promise.resolve([]),
+    tab === "runs" && admin ? prisma.prospectRun.findMany({ orderBy: { createdAt: "desc" }, take: 20 }) : Promise.resolve([]),
   ]);
-
-  const depts = [...new Set(zones.map((z) => z.dept))];
-
-  return (
-    <div className="mx-auto max-w-7xl p-6">
-      <div className="mb-5">
-        <h1 className="text-2xl font-semibold text-slate-900">Prospection</h1>
-        <p className="text-sm text-slate-500">
-          {stats.nouveau} salons disponibles · {stats.enTournee} en tournée · {stats.converti} convertis ·{" "}
-          {stats.dejaCrm} déjà dans le CRM
-        </p>
-      </div>
-
-      {sp.error && (
-        <div className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700 ring-1 ring-rose-200">{sp.error}</div>
-      )}
-
-      <section className="mb-8 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-        <h2 className="mb-3 font-semibold text-slate-900">Tournée du jour</h2>
-        <form action={generateTournee} className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1 text-sm text-slate-600">
-            Zone
-            <select
-              name="zone"
-              required
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-rose-300"
-            >
-              {depts.map((dept) => (
-                <optgroup key={dept} label={DEPT_LABEL[dept] ?? dept}>
-                  {zones
-                    .filter((zone) => zone.dept === dept)
-                    .map((zone) => (
-                      <option key={zone.slug} value={zone.slug} disabled={zone.available === 0}>
-                        {zone.label} ({zone.available} dispo)
-                      </option>
-                    ))}
-                </optgroup>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-sm text-slate-600">
-            Assignée à
-            <select
-              name="assignedToId"
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-rose-300"
-            >
-              <option value="">—</option>
-              {users.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.name ?? user.email}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-sm text-slate-600">
-            Salons
-            <input
-              type="number"
-              name="size"
-              defaultValue={25}
-              min={5}
-              max={30}
-              className="w-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-rose-300"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm text-slate-600">
-            Tier min
-            <select
-              name="minTier"
-              defaultValue="1"
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-rose-300"
-            >
-              <option value="1">Tous</option>
-              <option value="2">T2+ (Actif)</option>
-              <option value="3">T3+ (Établi)</option>
-              <option value="4">T4 (Référence)</option>
-            </select>
-          </label>
-          <button className="rounded-lg bg-rose-500 px-4 py-2 text-sm font-medium text-white hover:bg-rose-600">
-            Générer la tournée
-          </button>
-        </form>
-        <p className="mt-2 text-xs text-slate-400">
-          Sélection triée par tier (T1 base → T4 référence, selon avis + followers), hors salons déjà dans le CRM. Pool
-          alimenté par <code className="rounded bg-slate-100 px-1">npm run prospect:sweep</code>.
-        </p>
-      </section>
-
-      {tournees.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-300 p-12 text-center text-slate-400">
-          Aucune tournée aujourd&apos;hui — génère la première ci-dessus.
-        </div>
-      ) : (
-        tournees.map((tournee) => {
-          const active = tournee.prospects.filter((p) => p.status === "EN_TOURNEE");
-          const converted = tournee.prospects.length - active.length;
-          return (
-            <section key={tournee.id} className="mb-8">
-              <div className="mb-3 flex items-baseline justify-between">
-                <h2 className="text-lg font-semibold text-slate-900">
-                  {zoneLabel(tournee.zone)}
-                  <span className="ml-2 text-sm font-normal text-slate-500">
-                    {active.length} à visiter{converted > 0 ? ` · ${converted} traité${converted > 1 ? "s" : ""}` : ""}
-                  </span>
-                </h2>
-                <span className="text-sm text-slate-500">
-                  {tournee.assignedTo ? `👤 ${tournee.assignedTo.name ?? tournee.assignedTo.email}` : "Non assignée"}
-                </span>
-              </div>
-              {active.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-400">
-                  Tournée terminée 🎉
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {active.map((prospect) => (
-                    <ProspectCard key={prospect.id} prospect={prospect} />
-                  ))}
-                </div>
-              )}
-            </section>
-          );
-        })
-      )}
-    </div>
-  );
+  const pageHref = (page: number) => { const qs = new URLSearchParams(); for (const [k, v] of Object.entries(sp)) if (v && k !== "error") qs.set(k, v); qs.set("page", String(page)); return `/prospection?${qs}`; };
+  return <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-8">
+    <header className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-sm font-medium text-rose-600">Développer Glaura</p><h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">{admin ? "Prospection" : "Mes prospects"}</h1><p className="mt-2 text-sm text-slate-500">{admin ? "Une base conservée, des prospects qualifiés et un responsable pour chaque action." : "Vos prospects attribués et vos tournées en cours."}</p></div><Link href="/taches" className={input}>Voir mes tâches →</Link></header>
+    {sp.error && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">{sp.error}</p>}
+    <div className="grid gap-3 sm:grid-cols-3">{[["Disponibles", pool.available], ["Attribués", pool.assigned], ["Résultats de la recherche", pool.total]].map(([label, n]) => <div key={label} className="rounded-xl border border-slate-200 bg-white p-5"><p className="text-sm text-slate-500">{label}</p><p className="mt-2 text-3xl font-semibold text-slate-950">{Number(n).toLocaleString("fr-FR")}</p></div>)}</div>
+    <nav aria-label="Vues de prospection" className="flex gap-2 border-b border-slate-200 pb-3">{[["pool", admin ? "Base de prospects" : "Mes prospects"], ["rounds", "Tournées en cours"], ...(admin ? [["runs", "Collecte et enrichissement"]] : [])].map(([key, label]) => <Link key={key} href={`/prospection?tab=${key}`} aria-current={tab === key ? "page" : undefined} className={`rounded-lg px-4 py-2 text-sm font-medium ${tab === key ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-100"}`}>{label}</Link>)}</nav>
+    {admin && <section className="rounded-xl border border-violet-200 bg-violet-50 p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-semibold text-slate-950">Cibler les salons Treatwell + Planity</h2><p className="mt-1 max-w-3xl text-sm text-slate-600">Rechercher les salons Treatwell également présents sur Planity, avec vérification du nom et de l’adresse. Les deux fiches sont conservées. Aucun minimum d’avis n’est imposé pour ce ciblage.</p></div><Link href="/prospection?platform=both" className="text-sm font-medium text-violet-800">Voir les salons confirmés →</Link></div><form action={queueProspectRun} className="mt-4 flex flex-wrap items-end gap-3"><input type="hidden" name="kind" value="TREATWELL_PLANITY" /><label className="text-sm text-slate-600">Zone<select name="zone" defaultValue={sp.zone ?? "paris-11"} className={`${input} ml-2`}>{ZONES.map(z => <option key={z.slug} value={z.slug}>{z.label}</option>)}</select></label><label className="text-sm text-slate-600">Maximum de salons<input name="limit" type="number" min={1} max={200} defaultValue={50} className={`${input} ml-2 w-20`} /></label><SubmitButton className={button}>Rechercher les salons communs</SubmitButton></form><p className="mt-2 text-xs text-slate-500">Le traitement s’exécute en arrière-plan. Les résultats incertains ne sont pas confirmés automatiquement ; un parcours partiel peut manquer des salons.</p></section>}
+    {tab === "pool" && <>
+      <form className="flex flex-wrap gap-3" action="/prospection">
+        <input aria-label="Rechercher un prospect" name="q" defaultValue={sp.q} placeholder="Nom, ville, adresse, compte Instagram…" className={`${input} min-w-60 flex-1`} />
+        <select aria-label="Statut" name="status" defaultValue={sp.status ?? ""} className={input}><option value="">Tous les statuts</option>{Object.entries(PROSPECT_STATUS_LABEL).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
+        <select aria-label="Zone" name="zone" defaultValue={sp.zone ?? ""} className={input}><option value="">Toutes les zones</option>{ZONES.map(z => <option key={z.slug} value={z.slug}>{z.label}</option>)}</select>
+        <select aria-label="Plateformes de réservation" name="platform" defaultValue={sp.platform ?? ""} className={input}><option value="">Toutes les plateformes</option><option value="both">Treatwell + Planity confirmés</option><option value="treatwell">Présents sur Treatwell</option><option value="planity">Présents sur Planity</option></select>
+        <select aria-label="Compte Instagram" name="ig" defaultValue={sp.ig ?? ""} className={input}><option value="">Tous les comptes Instagram</option><option value="pending">À valider</option><option value="missing">Compte manquant</option></select>
+        {admin && <select aria-label="Responsable" name="owner" defaultValue={sp.owner ?? ""} className={input}><option value="">Tous les responsables</option><option value="none">Non attribués</option>{users.map(u => <option key={u.id} value={u.id}>{u.name ?? u.email}</option>)}</select>}
+        <button className={button}>Filtrer</button><Link href="/prospection" className={input}>Réinitialiser</Link>
+      </form>
+      {admin && <form id="assign-prospects" action={assignProspects} className="flex flex-wrap items-end gap-3 rounded-xl border border-rose-100 bg-rose-50 p-4"><input type="hidden" name="requestKey" value={randomUUID()} /><div className="w-full"><p className="font-medium text-slate-900">Attribuer les prospects sélectionnés</p><p className="text-xs text-slate-600">Chaque prospect reçoit une tâche. Les tâches ouvertes existantes suivent le nouveau responsable.</p></div><label className="text-xs text-slate-600">Responsable<select required name="assignedToId" className={`${input} mt-1 block`}><option value="">Choisir…</option>{users.map(u => <option key={u.id} value={u.id}>{u.name ?? u.email}</option>)}</select></label><label className="flex-1 text-xs text-slate-600">Action<input name="title" required maxLength={200} defaultValue="Contacter le salon" className={`${input} mt-1 block w-full`} /></label><label className="text-xs text-slate-600">Échéance<input required type="date" name="dueAt" defaultValue={parisDateInput()} className={`${input} mt-1 block`} /></label><SubmitButton className={button}>Attribuer et créer les tâches</SubmitButton></form>}
+      {admin && <ProspectSelection ids={pool.rows.filter(p => ["NOUVEAU", "EN_TOURNEE"].includes(p.status)).map(p => p.id)} />}
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>{admin && <th className="p-3"><span className="sr-only">Sélection</span></th>}{["Salon", "Origine", "Instagram", "Statut", "Responsable", "Actions"].map(t => <th key={t} className="px-4 py-3 font-medium">{t}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{pool.rows.map(p => {
+        const owner = p.assignedTo ?? p.tournee?.assignedTo;
+        const editable = ["NOUVEAU", "EN_TOURNEE"].includes(p.status);
+        return <tr key={p.id} className="align-top hover:bg-slate-50/70">{admin && <td className="p-3">{editable && <input type="checkbox" form="assign-prospects" name="prospectId" value={p.id} aria-label={`Sélectionner ${p.name}`} />}</td>}<td className="px-4 py-4"><p className="font-semibold text-slate-900">{p.name}</p><p className="mt-1 text-xs text-slate-500">{p.address ?? `${p.postalCode ?? ""} ${p.city ?? ""}`}</p><p className="mt-1 text-xs text-slate-500">{TIER_LABEL[p.tier]} · {p.reviewCount} avis</p></td><td className="px-4 py-4"><div className="flex flex-col gap-2">{p.treatwellUrl && <a href={p.treatwellUrl} target="_blank" rel="noreferrer" className="text-rose-700 hover:underline">Treatwell ↗</a>}{p.planityUrl && <a href={p.planityUrl} target="_blank" rel="noreferrer" className="text-sky-700 hover:underline">Planity ↗</a>}{!p.treatwellUrl && !p.planityUrl && <a href={p.sourceUrl} target="_blank" rel="noreferrer" className="text-rose-700 hover:underline">{p.source.toLowerCase()} ↗</a>}{p.dualPlatformCheckedAt && <span className="text-xs font-medium text-violet-800">Présence double vérifiée<br /><span className="font-normal">{frenchDate(p.dualPlatformCheckedAt)}</span></span>}</div><p className="mt-1 text-xs text-slate-500">{p.googlePlaceId ? "Google trouvé" : "Google non confirmé"}</p></td><td className="px-4 py-4">{p.instagram ? <a href={`https://www.instagram.com/${p.instagram}`} target="_blank" rel="noreferrer" className="text-violet-700">@{p.instagram}</a> : <span className="text-slate-400">{p.igStatus === "A_VALIDER" ? "Compte à confirmer" : "À enrichir"}</span>}{p.igStatus === "A_VALIDER" && <InstagramCandidates prospectId={p.id} candidates={p.igCandidates} />}</td><td className="px-4 py-4"><span className="rounded-full bg-slate-100 px-2 py-1 text-xs">{PROSPECT_STATUS_LABEL[p.status]}</span></td><td className="px-4 py-4"><p>{owner?.name ?? owner?.email ?? "Non attribué"}</p><p className="mt-1 text-xs text-slate-500">{p._count.tasks} tâche(s) ouverte(s)</p></td><td className="px-4 py-4"><div className="flex min-w-32 flex-col items-start gap-2">{p.salonId && <Link href={`/salons/${p.salonId}`} className="text-rose-700">Voir le salon →</Link>}{editable && <><Link href={`/taches?prospect=${p.id}`} className="font-medium text-rose-700">Créer une tâche</Link><form action={convertProspect}><input type="hidden" name="prospectId" value={p.id} /><SubmitButton className="text-xs text-slate-600">Ajouter aux salons</SubmitButton></form><form action={discardProspect}><input type="hidden" name="prospectId" value={p.id} /><SubmitButton className="text-xs text-slate-500">Écarter</SubmitButton></form>{admin && p.status === "EN_TOURNEE" && <form action={releaseProspect}><input type="hidden" name="prospectId" value={p.id} /><SubmitButton className="text-xs text-slate-500">Remettre à disposition</SubmitButton></form>}</>}</div></td></tr>;
+      })}</tbody></table>{!pool.rows.length && <p className="p-12 text-center text-sm text-slate-500">Aucun prospect pour ces critères.</p>}</div>
+      <div className="flex items-center justify-between text-sm text-slate-600"><p>Page {pool.page} sur {pool.pages} · {pool.total.toLocaleString("fr-FR")} résultats</p><div className="flex gap-3">{pool.page > 1 && <Link href={pageHref(pool.page - 1)} className={input}>Précédent</Link>}{pool.page < pool.pages && <Link href={pageHref(pool.page + 1)} className={input}>Suivant</Link>}</div></div>
+    </>}
+    {tab === "rounds" && <>
+      {admin && <form action={generateTournee} className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-5"><h2 className="w-full font-semibold">Préparer une tournée</h2><label className="text-sm">Zone<select name="zone" className={`${input} ml-2`}>{ZONES.map(z => <option key={z.slug} value={z.slug}>{z.label}</option>)}</select></label><select name="assignedToId" required aria-label="Responsable de la tournée" className={input}><option value="">Responsable…</option>{users.map(u => <option key={u.id} value={u.id}>{u.name ?? u.email}</option>)}</select><label className="text-sm">Nombre<input name="size" type="number" min={1} max={100} defaultValue={25} className={`${input} ml-2 w-20`} /></label><select name="minTier" aria-label="Présence Instagram minimale" className={input}><option value="1">Toute présence Instagram</option><option value="2">Compte confirmé</option><option value="3">1 000 abonnés et plus</option><option value="4">5 000 abonnés et plus</option></select><SubmitButton className={button}>Préparer et attribuer</SubmitButton></form>}
+      <p className="text-sm text-slate-500">Les tournées inachevées des jours précédents restent affichées.</p>
+      {rounds.map(r => <section key={r.id}><h2 className="mb-3 text-lg font-semibold">{zoneLabel(r.zone)} · {r.assignedTo?.name ?? r.assignedTo?.email ?? "Non attribuée"}</h2><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{r.prospects.filter(p => p.status === "EN_TOURNEE").map(p => <ProspectCard key={p.id} prospect={p} admin={admin} />)}</div></section>)}
+      {!rounds.length && <p className="rounded-xl border border-dashed p-10 text-center text-slate-500">Aucune tournée en cours. Vos tâches restent disponibles dans « Mes tâches ».</p>}
+    </>}
+    {tab === "runs" && admin && <>
+      <form action={queueProspectRun} className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-5"><h2 className="w-full font-semibold">Lancer une collecte ou un enrichissement</h2><p className="w-full text-sm text-slate-500">Collectez des salons depuis Google ou les annuaires. Pour Instagram, indiquez des comptes professionnels connus : la connexion Meta ne propose pas de recherche libre de tous les comptes. La zone des comptes importés est celle que vous choisissez.</p><select name="kind" aria-label="Type de traitement" className={input}><option value="GOOGLE_DISCOVERY">Trouver de nouveaux salons sur Google</option><option value="INSTAGRAM_DISCOVERY">Importer des comptes Instagram</option><option value="TREATWELL_PLANITY">Salons présents sur Treatwell et Planity</option><option value="DIRECTORIES">Collecter dans les annuaires</option><option value="GOOGLE">Enrichir avec Google</option><option value="INSTAGRAM">Enrichir avec Instagram</option></select><select name="zone" aria-label="Zone à traiter" className={input}>{ZONES.map(z => <option key={z.slug} value={z.slug}>{z.label}</option>)}</select><label className="text-sm">Recherche Google ou comptes Instagram<input name="query" maxLength={2000} placeholder="Coiffeurs afro, ou @salon1, @salon2…" className={`${input} ml-2`} /></label><label className="text-sm">Limite Google / Instagram<input name="limit" type="number" min={1} max={200} defaultValue={50} className={`${input} ml-2 w-20`} /></label><SubmitButton className={button}>Mettre en file d’attente</SubmitButton></form>
+      <div className="space-y-3">{runs.map(r => <article key={r.id} className="rounded-xl border border-slate-200 bg-white p-5"><div className="flex flex-wrap justify-between gap-2"><h3 className="font-medium">{{ TREATWELL_PLANITY: "Treatwell + Planity", GOOGLE_DISCOVERY: "Collecte Google", INSTAGRAM_DISCOVERY: "Import Instagram", DIRECTORIES: "Collecte annuaires", GOOGLE: "Enrichissement Google", INSTAGRAM: "Enrichissement Instagram" }[r.kind] ?? r.kind} · {zoneLabel(r.zone)}</h3><span className="text-sm text-slate-500">{{ QUEUED: "En attente", PROCESSING: "En cours", DONE: "Terminé", FAILED: "Échec" }[r.status] ?? r.status} · {frenchDate(r.createdAt, true)}</span></div><p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{r.summary ?? "Le traitement démarrera au prochain passage du service de prospection."}</p></article>)}{!runs.length && <p className="p-8 text-center text-slate-500">Aucun traitement lancé depuis cette interface.</p>}</div>
+    </>}
+  </div>;
 }

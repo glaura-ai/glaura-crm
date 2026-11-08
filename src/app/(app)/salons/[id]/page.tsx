@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { auth } from "@/auth";
+import { requireMember } from "@/lib/access";
+import { frenchDate } from "@/lib/crm-format";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { EmailFollowUpForm } from "@/components/EmailFollowUpForm";
 import { OnboardingPasswordReveal } from "@/components/OnboardingPasswordReveal";
@@ -57,7 +58,7 @@ const emailStatusStyle = {
 
 export default async function SalonDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await auth();
+  const session = { user: await requireMember() };
   const me = session?.user;
   const isAdmin = me?.role === "ADMIN";
   const [salon, assignableUsers, emailTemplates] = await Promise.all([
@@ -141,6 +142,7 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
         )}
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">{salon.name}</h1>
+          <Link href={`/taches?salon=${salon.id}`} className="mt-2 inline-block text-sm font-medium text-rose-700">+ Créer une tâche</Link>{salon.prospect && <div className="mt-2 flex flex-wrap gap-3 text-sm">{salon.prospect.treatwellUrl && <a href={salon.prospect.treatwellUrl} target="_blank" rel="noreferrer" className="text-rose-700">Fiche Treatwell ↗</a>}{salon.prospect.planityUrl && <a href={salon.prospect.planityUrl} target="_blank" rel="noreferrer" className="text-sky-700">Fiche Planity ↗</a>}</div>}
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             {salon.metier.map((m) => (
               <span key={m} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{METIER_LABEL[m]}</span>
@@ -236,7 +238,7 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
                     {onboardingStatusLabel[latestJob.status]}
                   </span>
                 </div>
-                <div className="mt-1 text-xs text-slate-500">{new Date(latestJob.updatedAt).toLocaleString("fr-FR")}</div>
+                <div className="mt-1 text-xs text-slate-500">{frenchDate(latestJob.updatedAt, true)}</div>
                 {latestJob.loginEmail && <div className="mt-2 font-medium text-slate-700">{latestJob.loginEmail}</div>}
                 {/* Only the job id crosses to the client — the encrypted password
                     stays server-side and is fetched on demand by the action. */}
@@ -363,7 +365,7 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
                 <li key={r.id} className={cn("flex items-center justify-between rounded-lg p-2 text-sm", r.done ? "bg-slate-50 text-slate-400 line-through" : "bg-amber-50")}>
                   <div>
                     <div className={cn(!r.done && "font-medium text-slate-700")}>{r.title}</div>
-                    <div className="text-xs text-slate-400">{new Date(r.dueAt).toLocaleString("fr-FR")}</div>
+                    <div className="text-xs text-slate-400">{frenchDate(r.dueAt, true)}</div>
                   </div>
                   {!r.done && (
                     <form action={completeReminder.bind(null, r.id, id)}>
@@ -392,5 +394,5 @@ function Row({ label, value }: { label: string; value?: React.ReactNode | null }
 
 function formatDate(value?: Date | string | null): string | null {
   if (!value) return null;
-  return new Date(value).toLocaleDateString("fr-FR");
+  return frenchDate(value);
 }

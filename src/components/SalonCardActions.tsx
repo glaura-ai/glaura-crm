@@ -40,7 +40,7 @@ export function SalonCardActions({
         aria-label={`Archiver ${salonName}`}
         title="Archiver"
         onClick={() =>
-          run(`Archiver « ${salonName} » ? Il disparaîtra du pipeline.`, () => archiveSalon(salonId))
+          run(`Archiver « ${salonName} » ? Il disparaîtra du suivi commercial.`, () => archiveSalon(salonId))
         }
         className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
       >
@@ -61,7 +61,7 @@ export function SalonCardActions({
           title="Supprimer"
           onClick={() =>
             run(
-              `Supprimer définitivement « ${salonName} » et tout son historique (activités, rappels, jobs) ? Cette action est irréversible.`,
+              `Supprimer définitivement « ${salonName} » et tout son historique (activités, rappels, traitements) ? Cette action est irréversible.`,
               () => deleteSalon(salonId),
             )
           }

@@ -74,6 +74,8 @@ enum LeadSource {
 
 // Prospection: salons discovered on public booking directories, not yet CRM leads.
 enum ProspectSource {
+  GOOGLE
+  INSTAGRAM
   PLANITY
   TREATWELL
   BOOKSY
@@ -127,51 +129,55 @@ enum EmailJobStatus {
 // ── Models ───────────────────────────────────────────────────────
 
 model User {
-  id        String    @id @default(cuid())
-  email     String    @unique
-  name      String?
-  image     String?
-  role      Role      @default(COMMERCIAL)
-  active    Boolean   @default(true) // false = hidden from assignee pickers (ex-employee / dev)
-  createdAt DateTime  @default(now())
-  lastLogin DateTime?
+  id              String    @id @default(cuid())
+  email           String    @unique
+  name            String?
+  image           String?
+  role            Role      @default(COMMERCIAL)
+  active          Boolean   @default(true) // false = access revoked, including existing sessions
+  createdAt       DateTime  @default(now())
+  lastLogin       DateTime?
+  accessGrantedAt DateTime? // explicit approval from the team administration
 
-  assignedSalons Salon[]         @relation("AssignedTo")
-  activities     Activity[]
-  reminders      Reminder[]
-  onboardingJobs OnboardingJob[]
-  emailJobs      EmailJob[]
-  emailTemplates EmailTemplate[]
-  tournees       Tournee[]
+  tasks             SalesTask[]
+  assignedProspects Prospect[]      @relation("ProspectOwner")
+  prospectRuns      ProspectRun[]
+  assignedSalons    Salon[]         @relation("AssignedTo")
+  activities        Activity[]
+  reminders         Reminder[]
+  onboardingJobs    OnboardingJob[]
+  emailJobs         EmailJob[]
+  emailTemplates    EmailTemplate[]
+  tournees          Tournee[]
 }
 
 model Salon {
-  id                 String      @id @default(cuid())
-  name               String
-  slug               String      @unique
-  metier             Metier[]    @default([]) // a salon can span several métiers
-  type               SalonType? // deal-size tier: A = biggest deal … D = smallest
-  arrondissement     String?
-  address            String?
-  lat                Float?
-  lng                Float?
-  phone              String?
-  contactName        String?
-  contactEmail       String?
-  instagram          String?
-  bookingTool        BookingTool @default(NONE)
-  bookingUrl         String?
+  id                   String      @id @default(cuid())
+  name                 String
+  slug                 String      @unique
+  metier               Metier[]    @default([]) // a salon can span several métiers
+  type                 SalonType? // deal-size tier: A = biggest deal … D = smallest
+  arrondissement       String?
+  address              String?
+  lat                  Float?
+  lng                  Float?
+  phone                String?
+  contactName          String?
+  contactEmail         String?
+  instagram            String?
+  bookingTool          BookingTool @default(NONE)
+  bookingUrl           String?
   // Canonical host/path claimed only after /pro identity verification. Unique
   // prevents a second account from activating the same external salon page.
-  bookingUrlNormalized String? @unique
-  rating             Float?
-  status             SalonStatus @default(A_VISITER)
-  notes              String?     @db.Text
-  objection          String?     @db.Text
-  priorityLabel      String?
-  leadTemperature    String?
-  accountStatusLabel String?
-  sourceLabel        String?
+  bookingUrlNormalized String?     @unique
+  rating               Float?
+  status               SalonStatus @default(A_VISITER)
+  notes                String?     @db.Text
+  objection            String?     @db.Text
+  priorityLabel        String?
+  leadTemperature      String?
+  accountStatusLabel   String?
+  sourceLabel          String?
 
   assignedToId String?
   assignedTo   User?   @relation("AssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
@@ -204,6 +210,7 @@ model Salon {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  tasks          SalesTask[]
   activities     Activity[]
   reminders      Reminder[]
   onboardingJobs OnboardingJob[]
@@ -223,17 +230,20 @@ model Salon {
 // A salon discovered on a public booking directory (Planity/Treatwell/Booksy/Fresha).
 // Lives outside the Salon pipeline until converted; deduped by sourceUrl.
 model Prospect {
-  id     String  @id @default(cuid())
-  name   String
-  zone   String? // zone slug from src/lib/prospection/zones.ts (derived from postalCode)
+  id      String   @id @default(cuid())
+  name    String
+  zone    String? // zone slug from src/lib/prospection/zones.ts (derived from postalCode)
   metiers Metier[] @default([])
 
   address    String?
   postalCode String?
   city       String?
 
-  source    ProspectSource
-  sourceUrl String         @unique // salon page on the source directory = booking link
+  source                ProspectSource
+  sourceUrl             String         @unique // original discovery page
+  treatwellUrl          String?        @unique
+  planityUrl            String?        @unique
+  dualPlatformCheckedAt DateTime? // matched on both platforms, by name and full address
 
   rating      Float?
   reviewCount Int    @default(0)
@@ -263,6 +273,10 @@ model Prospect {
   salonId String? @unique // set when converted into a Salon lead
   salon   Salon?  @relation("ProspectConversion", fields: [salonId], references: [id], onDelete: SetNull)
 
+  assignedToId String?
+  assignedTo   User?       @relation("ProspectOwner", fields: [assignedToId], references: [id], onDelete: SetNull)
+  tasks        SalesTask[]
+
   tourneeId String?
   tournee   Tournee? @relation(fields: [tourneeId], references: [id], onDelete: SetNull)
 
@@ -275,18 +289,19 @@ model Prospect {
   @@index([zone, status, tier])
   @@index([status])
   @@index([tourneeId])
+  @@index([assignedToId, status])
   @@index([igStatus])
   @@index([googleStatus])
 }
 
 // A daily prospecting round: 20-30 prospects in one zone, assigned to a commercial.
 model Tournee {
-  id           String    @id @default(cuid())
-  date         DateTime  @db.Date
+  id           String     @id @default(cuid())
+  date         DateTime   @db.Date
   zone         String
   assignedToId String?
-  assignedTo   User?     @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
-  createdAt    DateTime  @default(now())
+  assignedTo   User?      @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdAt    DateTime   @default(now())
   prospects    Prospect[]
 
   @@unique([date, zone])
@@ -329,24 +344,24 @@ model EmailJob {
   requestedById String?
   requestedBy   User?   @relation(fields: [requestedById], references: [id], onDelete: SetNull)
 
-  to   String
-  from String?
+  to          String
+  from        String?
   // Snapshot of the template key at send time. Kept as a plain string so the
   // history stays readable even if the template is later renamed or archived.
   templateKey String
   templateId  String?
   template    EmailTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  subject  String
+  subject     String
   // `body` is what gets sent as the main part: plaintext for TEXT jobs, the
   // rendered markup for HTML ones. `bodyText` carries the plaintext alternative
   // of an HTML job so the message is never HTML-only.
-  format   EmailFormat  @default(TEXT)
-  body     String       @db.Text
-  bodyText String?      @db.Text
-  status   EmailJobStatus @default(QUEUED)
-  attempts Int          @default(0)
-  lastError String?     @db.Text
-  sentAt   DateTime?
+  format      EmailFormat    @default(TEXT)
+  body        String         @db.Text
+  bodyText    String?        @db.Text
+  status      EmailJobStatus @default(QUEUED)
+  attempts    Int            @default(0)
+  lastError   String?        @db.Text
+  sentAt      DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -377,9 +392,9 @@ model EmailTemplate {
 
   subject String
   format  EmailFormat @default(TEXT)
-  body    String @db.Text
+  body    String      @db.Text
 
-  sortOrder Int @default(0)
+  sortOrder  Int       @default(0)
   // Soft delete: archived templates leave the dropdown but stay joinable from
   // the jobs they produced.
   archivedAt DateTime?
@@ -410,11 +425,11 @@ model OnboardingJob {
   // enable, deposit, agentCount, reviewTarget. Null → legacy disabled behavior.
   config Json?
 
-  startedAt  DateTime?
-  finishedAt DateTime?
-  durationMs Int?
-  exitCode   Int?
-  eventCount Int       @default(0)
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  durationMs  Int?
+  exitCode    Int?
+  eventCount  Int       @default(0)
   lastEventAt DateTime?
 
   accountUid    String?
@@ -436,9 +451,9 @@ model OnboardingJob {
 }
 
 model OnboardingJobEvent {
-  id        String        @id @default(cuid())
-  jobId     String
-  job       OnboardingJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  id    String        @id @default(cuid())
+  jobId String
+  job   OnboardingJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   sequence Int
   stream   String // stdout | stderr | system
@@ -453,4 +468,86 @@ model OnboardingJobEvent {
   @@unique([jobId, sequence])
   @@index([jobId, createdAt])
   @@index([type])
+}
+
+/// One row per (edition, salon) of the monthly feature digest; sentAt set means delivered.
+model FeatureDigestSend {
+  id         String    @id @default(cuid())
+  edition    String
+  providerId String
+  email      String
+  sentAt     DateTime?
+  error      String?   @db.Text
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([edition, providerId])
+  @@index([edition])
+}
+
+// Persistent work survives daily rounds. Conversation references stay admin-only.
+model SalesTask {
+  requestKey              String?   @unique
+  id                      String    @id @default(cuid())
+  title                   String
+  context                 String?   @db.Text
+  dueAt                   DateTime
+  doneAt                  DateTime?
+  outcome                 String?   @db.Text
+  assignedToId            String
+  assignedTo              User      @relation(fields: [assignedToId], references: [id])
+  prospectId              String?
+  prospect                Prospect? @relation(fields: [prospectId], references: [id], onDelete: SetNull)
+  salonId                 String?
+  salon                   Salon?    @relation(fields: [salonId], references: [id], onDelete: SetNull)
+  instagramConversationId String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@index([assignedToId, doneAt, dueAt])
+  @@index([prospectId])
+  @@index([salonId])
+}
+
+model ProspectRun {
+  id            String    @id @default(cuid())
+  kind          String
+  query         String?
+  zone          String
+  source        String?
+  limit         Int       @default(50)
+  status        String    @default("QUEUED")
+  summary       String?   @db.Text
+  requestedById String
+  requestedBy   User      @relation(fields: [requestedById], references: [id])
+  createdAt     DateTime  @default(now())
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  heartbeatAt   DateTime?
+
+  @@index([status, createdAt])
+}
+
+model InstagramConversation {
+  id            String             @id
+  participantId String
+  username      String?
+  salonId       String?
+  lastMessageAt DateTime
+  lastInboundAt DateTime?
+  resolvedAt    DateTime?
+  messages      InstagramMessage[]
+
+  @@index([lastMessageAt])
+}
+
+model InstagramMessage {
+  id             String                @id
+  conversationId String
+  conversation   InstagramConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  incoming       Boolean
+  text           String                @db.Text
+  sentAt         DateTime
+
+  @@index([conversationId, sentAt])
 }

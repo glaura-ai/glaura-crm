@@ -44,15 +44,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   pages: { signIn: "/login" },
   callbacks: {
     async signIn({ profile, user, account }) {
-      const email = (profile?.email ?? user?.email ?? "").toLowerCase();
+      const email = (profile?.email ?? user?.email ?? "").trim().toLowerCase();
+      const member = await prisma.user.findUnique({ where: { email } });
+      if (member && !member.active) return false;
       if (account?.provider === "google") {
-        return ALLOWED_GOOGLE_EMAILS.has(email);
+        if (profile?.email_verified !== true) return false;
+        return ALLOWED_GOOGLE_EMAILS.has(email) || Boolean(member?.active && member.accessGrantedAt);
       }
       return true;
     },
-    // DB work only on first sign-in (Node runtime), never on edge.
+    // Check membership on every request: disabling an account revokes existing JWTs.
     async jwt({ token, account, profile, user }) {
-      const email = profile?.email ?? user?.email;
+      const email = (profile?.email ?? user?.email)?.trim().toLowerCase();
       if (account && email) {
         const isPasswordAdmin = account.provider === "admin-password";
         const name = (profile?.name as string) ?? user?.name ?? null;
@@ -70,6 +73,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.uid = u.id;
         token.role = u.role;
       }
+      if (!token.uid) return null;
+      const member = await prisma.user.findUnique({ where: { id: token.uid as string }, select: { active: true, role: true, email: true, accessGrantedAt: true } });
+      if (!member?.active) return null;
+      const approved = ALLOWED_GOOGLE_EMAILS.has(member.email.toLowerCase()) || member.accessGrantedAt || member.email.toLowerCase() === adminEmail.toLowerCase() || (isDev && member.email === "dev@glaura.fr");
+      if (!approved) return null;
+      token.role = member.role;
       return token;
     },
     async session({ session, token }) {

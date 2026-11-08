@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import type { CrawledProspect, CrawlLog } from "@/lib/prospection/crawl";
 import { matchCrmSalon, normalizeBookingUrl, normalizeName, postalFromArrondissement, type CrmIndex } from "@/lib/prospection/match";
+import { sameDirectoryBusiness } from "@/lib/prospection/directory-match";
 import { tierForProspect } from "@/lib/prospection/tier";
 
 // Persists crawled listings as Prospect rows:
@@ -56,22 +57,33 @@ function refreshedFields(prospect: CrawledProspect, now: Date) {
     rating: prospect.rating,
     reviewCount: prospect.reviewCount,
     lastSeenAt: now,
+    ...(prospect.source === "TREATWELL" ? { treatwellUrl: prospect.sourceUrl } : {}),
+    ...(prospect.source === "PLANITY" ? { planityUrl: prospect.sourceUrl } : {}),
+    ...(prospect.treatwellUrl ? { treatwellUrl: prospect.treatwellUrl } : {}),
+    ...(prospect.planityUrl ? { planityUrl: prospect.planityUrl } : {}),
+    ...(prospect.dualPlatformCheckedAt ? { dualPlatformCheckedAt: prospect.dualPlatformCheckedAt } : {}),
   };
 }
 
 export async function upsertProspects(
   prospects: CrawledProspect[],
   log: CrawlLog = () => {},
+  options: { minReviewCount?: number } = {},
 ): Promise<UpsertCounts> {
-  const threshold = minReviews();
+  const threshold = options.minReviewCount ?? minReviews();
   const kept = prospects.filter((p) => p.reviewCount >= threshold);
   log(`${kept.length}/${prospects.length} salons avec ≥${threshold} avis`);
 
   const index = await loadCrmIndex();
   const existingRows = await prisma.prospect.findMany({
-    where: { sourceUrl: { in: kept.map((p) => p.sourceUrl) } },
+    where: { OR: [{ sourceUrl: { in: kept.flatMap(p => [p.sourceUrl, ...(p.planityUrl ? [p.planityUrl] : []), ...(p.treatwellUrl ? [p.treatwellUrl] : [])]) } }, { postalCode: { in: kept.flatMap(p => p.postalCode ? [p.postalCode] : []) } }] },
     select: {
       id: true,
+      name: true,
+      postalCode: true,
+      address: true,
+      treatwellUrl: true,
+      planityUrl: true,
       sourceUrl: true,
       status: true,
       metiers: true,
@@ -79,7 +91,14 @@ export async function upsertProspects(
       googleReviewCount: true,
     },
   });
-  const existingByUrl = new Map(existingRows.map((row) => [row.sourceUrl, row]));
+  const cachedRows = new Map(existingRows.map(row => [row.id, row]));
+  const existingByUrl = new Map<string, (typeof existingRows)[number]>();
+  function cacheRow(row: (typeof existingRows)[number]) {
+    cachedRows.set(row.id, row);
+    for (const url of [row.sourceUrl, row.treatwellUrl, row.planityUrl]) if (url) existingByUrl.set(url, row);
+  }
+  existingRows.forEach(cacheRow);
+  const candidatesByNamePostal = (key: string) => [...cachedRows.values()].filter(row => `${normalizeName(row.name)}|${row.postalCode}` === key);
 
   const now = new Date();
   const counts: UpsertCounts = { kept: kept.length, created: 0, updated: 0, alreadyInCrm: 0 };
@@ -88,9 +107,14 @@ export async function upsertProspects(
     const matchedSalonId = matchCrmSalon(prospect, index);
     if (matchedSalonId) counts.alreadyInCrm++;
 
-    const existing = existingByUrl.get(prospect.sourceUrl);
+    const namePostal = prospect.postalCode ? `${normalizeName(prospect.name)}|${prospect.postalCode}` : null;
+    const candidates = namePostal ? candidatesByNamePostal(namePostal).filter(row => sameDirectoryBusiness(prospect, { name: row.name, postalCode: row.postalCode, street: row.address })) : [];
+    const existing = existingByUrl.get(prospect.sourceUrl)
+      ?? (prospect.planityUrl ? existingByUrl.get(prospect.planityUrl) : undefined)
+      ?? existingRows.find(row => row.treatwellUrl === prospect.sourceUrl || row.planityUrl === prospect.sourceUrl)
+      ?? (candidates.length === 1 ? candidates[0] : undefined);
     if (!existing) {
-      await prisma.prospect.create({
+      const created = await prisma.prospect.create({
         data: {
           ...refreshedFields(prospect, now),
           metiers: prospect.metiers,
@@ -103,13 +127,14 @@ export async function upsertProspects(
           firstSeenAt: now,
         },
       });
+      cacheRow(created);
       counts.created++;
       continue;
     }
 
     // Only NOUVEAU can flip to DEJA_CRM — never touch tournée/manual statuses.
     const status = existing.status === "NOUVEAU" && matchedSalonId ? "DEJA_CRM" : existing.status;
-    await prisma.prospect.update({
+    const updated = await prisma.prospect.update({
       where: { id: existing.id },
       data: {
         ...refreshedFields(prospect, now),
@@ -121,6 +146,7 @@ export async function upsertProspects(
         tier: tierForProspect({ instagramFollowers: existing.instagramFollowers }),
       },
     });
+    cacheRow(updated);
     counts.updated++;
   }
 

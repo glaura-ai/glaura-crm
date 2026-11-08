@@ -4,10 +4,12 @@ import { signIn } from "@/auth";
 
 const ERROR_MESSAGES: Record<string, string> = {
   CredentialsSignin:
-    "Mot de passe incorrect. Membres de l'equipe : utilisez « Continuer avec Google » ci-dessus avec votre adresse @glaura.fr.",
+    "Mot de passe incorrect. Membres de l’équipe : utilisez « Continuer avec Google » ci-dessus avec votre adresse @glaura.fr.",
   AccessDenied:
-    "Ce compte Google n'a pas acces au CRM. Connectez-vous avec votre adresse @glaura.fr.",
-  default: "La connexion a echoue. Reessayez ou contactez un administrateur.",
+    "Ce compte n’a pas accès au CRM. Contactez un administrateur.",
+  DevSignin:
+    "La connexion de développement est indisponible. Vérifiez que la base locale est démarrée et à jour avec npm run dev:setup.",
+  default: "La connexion a échoué. Réessayez ou contactez un administrateur.",
 };
 
 export default async function LoginPage({
@@ -45,7 +47,7 @@ export default async function LoginPage({
               Continuer avec Google
             </button>
             <p className="mt-2 text-center text-xs text-slate-400">
-              Equipe Glaura : connectez-vous avec votre adresse @glaura.fr
+              Équipe Glaura : connectez-vous avec votre adresse @glaura.fr
             </p>
           </form>
         )}
@@ -80,7 +82,7 @@ export default async function LoginPage({
               required
             />
             <button className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50">
-              Acceder au CRM
+              Accéder au CRM
             </button>
           </form>
         </details>
@@ -89,7 +91,12 @@ export default async function LoginPage({
           <form
             action={async () => {
               "use server";
-              await signIn("dev", { redirectTo: "/dashboard" });
+              try {
+                await signIn("dev", { redirectTo: "/dashboard" });
+              } catch (error) {
+                if (error instanceof AuthError) redirect("/login?error=DevSignin");
+                throw error;
+              }
             }}
           >
             <button className="mt-3 w-full rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50">
@@ -98,7 +105,7 @@ export default async function LoginPage({
           </form>
         )}
 
-        <p className="mt-6 text-center text-xs text-slate-400">Acces reserve a l&apos;equipe Glaura</p>
+        <p className="mt-6 text-center text-xs text-slate-400">Accès réservé à l&apos;equipe Glaura</p>
       </div>
     </main>
   );

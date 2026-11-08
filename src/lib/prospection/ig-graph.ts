@@ -10,7 +10,7 @@ import type { IgProfile } from "@/lib/prospection/ig-match";
 // Auth: a Page access token with instagram_basic + instagram_manage_insights
 // (env IG_GRAPH_TOKEN) + our IG business user id (env IG_GRAPH_USER_ID).
 
-const GRAPH_VERSION = "v21.0";
+const GRAPH_VERSION = process.env.IG_GRAPH_VERSION ?? "v25.0";
 
 export class IgGraphAuthError extends Error {
   constructor(message: string) {

@@ -13,6 +13,8 @@ export type SendEmailInput = {
   /** Optional HTML body. When set, `text` is kept as the plaintext fallback. */
   html?: string | null;
   replyTo?: string | null;
+  /** Extra message headers, e.g. List-Unsubscribe. */
+  headers?: Record<string, string>;
 };
 
 export function defaultEmailFrom() {
@@ -54,7 +56,7 @@ async function buildBody(html?: string | null) {
   return { html: inlined.html, attachments: attachments.length ? attachments : undefined };
 }
 
-export async function sendEmail({ to, subject, text, html, replyTo }: SendEmailInput) {
+export async function sendEmail({ to, subject, text, html, replyTo, headers }: SendEmailInput) {
   const host = process.env.SMTP_HOST;
   if (!host) throw new Error("SMTP_HOST manquant");
 
@@ -89,6 +91,7 @@ export async function sendEmail({ to, subject, text, html, replyTo }: SendEmailI
     text,
     html: body.html,
     replyTo: replyTo || undefined,
+    headers,
     attachments: body.attachments,
   });
 }

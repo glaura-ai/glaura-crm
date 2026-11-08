@@ -28,7 +28,7 @@ function instagramUrl(p: TourneeProspect): string {
   return `https://www.google.com/search?q=${encodeURIComponent(`instagram ${p.name} ${p.city ?? "Paris"}`)}`;
 }
 
-export function ProspectCard({ prospect }: { prospect: TourneeProspect }) {
+export function ProspectCard({ prospect, admin = false }: { prospect: TourneeProspect; admin?: boolean }) {
   const source = prospect.source as ProspectSource;
   return (
     <div className="flex flex-col gap-3 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
@@ -40,7 +40,7 @@ export function ProspectCard({ prospect }: { prospect: TourneeProspect }) {
         <div className="flex shrink-0 items-center gap-1">
           <span
             className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", TIER_STYLE[prospect.tier])}
-            title={`Tier ${prospect.tier} — ${TIER_LABEL[prospect.tier]}`}
+            title={`Niveau ${prospect.tier} — ${TIER_LABEL[prospect.tier]}`}
           >
             T{prospect.tier}
           </span>
@@ -62,7 +62,7 @@ export function ProspectCard({ prospect }: { prospect: TourneeProspect }) {
 
       <div className="flex flex-wrap gap-3 text-sm">
         <a href={prospect.sourceUrl} target="_blank" rel="noreferrer" className="font-medium text-rose-600 hover:underline">
-          Réservation ↗
+          Fiche d’origine ↗
         </a>
         <a href={mapsUrl(prospect)} target="_blank" rel="noreferrer" className="font-medium text-sky-600 hover:underline">
           Maps ↗
@@ -71,7 +71,7 @@ export function ProspectCard({ prospect }: { prospect: TourneeProspect }) {
           {prospect.instagram ? `@${prospect.instagram}` : "Chercher l'Insta ↗"}
         </a>
         {prospect.instagram && formatFollowers(prospect.instagramFollowers) && (
-          <span className="text-slate-500">{formatFollowers(prospect.instagramFollowers)} followers</span>
+          <span className="text-slate-500">{formatFollowers(prospect.instagramFollowers)} abonnés</span>
         )}
       </div>
 
@@ -105,15 +105,15 @@ export function ProspectCard({ prospect }: { prospect: TourneeProspect }) {
         <form action={convertProspect} className="flex-1">
           <input type="hidden" name="prospectId" value={prospect.id} />
           <button className="w-full rounded-lg bg-rose-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-600">
-            → Salon
+            Ajouter aux salons
           </button>
         </form>
-        <form action={releaseProspect}>
+        {admin && <form action={releaseProspect}>
           <input type="hidden" name="prospectId" value={prospect.id} />
-          <button title="Remettre dans le pool" className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
+          <button title="Remettre à disposition" className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
             Retirer
           </button>
-        </form>
+        </form>}
         <form action={discardProspect}>
           <input type="hidden" name="prospectId" value={prospect.id} />
           <button title="Écarter définitivement" className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-400 hover:bg-slate-50 hover:text-rose-600">
