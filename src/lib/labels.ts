@@ -103,3 +103,7 @@ export const ACCOUNT_ATTENTION_STYLE: Record<string, string> = {
   duplicate_email: "bg-red-100 text-red-700",
   import_failed: "bg-red-100 text-red-700",
 };
+
+export const LEAD_TEMPERATURE_LABEL: Record<string, string> = {
+  CHAUD: "Chaud", TIEDE: "Tiède", A_RECONTACTER: "À recontacter plus tard", FROID: "Froid",
+};

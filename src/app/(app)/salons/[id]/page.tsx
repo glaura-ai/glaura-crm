@@ -1,3 +1,4 @@
+import { LEAD_TEMPERATURE_LABEL } from "@/lib/labels";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireMember } from "@/lib/access";
@@ -186,7 +187,7 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
                 <Row label="Note" value={salon.rating ? `${salon.rating}/5` : null} />
                 <Row label="Assigné à" value={salon.assignedTo?.name ?? salon.assignedTo?.email ?? null} />
                 <Row label="Priorité" value={salon.priorityLabel} />
-                <Row label="Lead" value={salon.leadTemperature} />
+                <Row label="Lead" value={salon.leadTemperature ? LEAD_TEMPERATURE_LABEL[salon.leadTemperature] ?? salon.leadTemperature : null} />
                 <Row label="Source" value={salon.sourceLabel} />
                 <Row label="Compte" value={salon.accountStatusLabel} />
                 <Row label="Signature" value={formatDate(salon.signedAt)} />

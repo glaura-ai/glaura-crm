@@ -14,8 +14,9 @@ it("classifies the latest incoming message with bounded context and validated ou
   expect(request.system).toContain("instructions");
 });
 it("requires rechecking stale leads rather than treating old interest as current", async () => {
+  state.parse.mockResolvedValue({ parsed_output: { temperature: "CHAUD", reason: "Demande de démonstration.", action: "Proposer un créneau", confidence: "HIGH" } });
   expect((await classifyLead(message, [], new Date("2027-01-01"))).temperature).toBe("A_RECONTACTER");
-  expect(state.parse).not.toHaveBeenCalled();
+  expect(state.parse).toHaveBeenCalledOnce();
 });
 it("does not infer interest from attachments or deleted message placeholders", async () => {
   for (const text of ["[Pièce jointe — consulter Instagram]", "[Message supprimé]", ""]) expect((await classifyLead({ ...message, text }, [], new Date("2026-11-09T11:00:00Z"))).temperature).toBe("A_RECONTACTER");
@@ -30,4 +31,9 @@ it("uses content hashes so edits invalidate a classification even with the same 
 it("downgrades uncertain AI decisions to a human recheck", async () => {
   state.parse.mockResolvedValue({ parsed_output: { temperature: "CHAUD", reason: "Réponse ambiguë.", action: "Demander une précision", confidence: "LOW" } });
   expect((await classifyLead(message, [], new Date("2026-11-09T11:00:00Z"))).temperature).toBe("A_RECONTACTER");
+});
+
+it("preserves an explicit refusal even when the message is old", async () => {
+  state.parse.mockResolvedValue({ parsed_output: { temperature: "FROID", reason: "Refus explicite.", action: "Respecter le refus et ne plus solliciter", confidence: "HIGH" } });
+  expect((await classifyLead({ ...message, text: "Non merci, ne me contactez plus" }, [], new Date("2027-01-01"))).temperature).toBe("FROID");
 });
