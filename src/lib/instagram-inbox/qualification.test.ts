@@ -1,9 +1,10 @@
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({ parse: vi.fn() }));
 vi.mock("@anthropic-ai/sdk", () => ({ default: class { messages = { parse: state.parse }; } }));
 import { classifyLead, qualificationHash } from "./qualification";
 const message = { id: "incoming-1", text: "Je suis intéressée, pouvons-nous prévoir une démo ?", sentAt: new Date("2026-11-09T10:00:00Z"), incoming: true };
-beforeEach(() => { vi.clearAllMocks(); });
+beforeEach(() => { vi.clearAllMocks(); vi.stubEnv("CRM_LEAD_QUALIFIER_AI_ENABLED", "true"); });
+afterEach(() => vi.unstubAllEnvs());
 it("classifies the latest incoming message with bounded context and validated output", async () => {
   state.parse.mockResolvedValue({ parsed_output: { temperature: "CHAUD", reason: "Demande explicite de démonstration.", action: "Proposer deux créneaux de démonstration", confidence: "HIGH" } });
   const result = await classifyLead(message, [{ ...message, text: "Notre offre vous intéresse ?", incoming: false }], new Date("2026-11-09T11:00:00Z"));
@@ -36,4 +37,10 @@ it("downgrades uncertain AI decisions to a human recheck", async () => {
 it("preserves an explicit refusal even when the message is old", async () => {
   state.parse.mockResolvedValue({ parsed_output: { temperature: "FROID", reason: "Refus explicite.", action: "Respecter le refus et ne plus solliciter", confidence: "HIGH" } });
   expect((await classifyLead({ ...message, text: "Non merci, ne me contactez plus" }, [], new Date("2027-01-01"))).temperature).toBe("FROID");
+});
+
+it("does not send messages to an AI provider unless explicitly enabled", async () => {
+  vi.stubEnv("CRM_LEAD_QUALIFIER_AI_ENABLED", "false");
+  expect((await classifyLead(message, [], new Date("2026-11-09T11:00:00Z"))).temperature).toBe("CHAUD");
+  expect(state.parse).not.toHaveBeenCalled();
 });

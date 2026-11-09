@@ -15,7 +15,7 @@ export async function queueLeadQualification(id: string, messageId: unknown, exp
   await prisma.instagramConversation.updateMany({ where: { id, qualificationPending: false }, data: { qualificationPending: true, qualificationStartedAt: null, qualificationError: null } });
 }
 
-export async function persistQualification(id: string, message: QualificationMessage, result: Qualification, source: "AI" | "MANUAL", lease?: Date) {
+export async function persistQualification(id: string, message: QualificationMessage, result: Qualification, source: "AI" | "LOCAL" | "MANUAL", lease?: Date) {
   return prisma.$transaction(async tx => {
     await tx.$queryRaw`SELECT id FROM "InstagramConversation" WHERE id = ${id} FOR UPDATE`;
     const latest = await tx.instagramMessage.findFirst({ where: { conversationId: id, incoming: true }, orderBy: latestIncomingOrder });
@@ -50,7 +50,7 @@ export async function processLeadQualification() {
     if (!message) throw new Error("No incoming message");
     const context = await prisma.instagramMessage.findMany({ where: { conversationId: conversation.id, sentAt: { lt: message.sentAt } }, orderBy: latestIncomingOrder, take: 6 });
     const result = await classifyLead(message, context.reverse());
-    const saved = await persistQualification(conversation.id, message, result, "AI", startedAt);
+    const saved = await persistQualification(conversation.id, message, result, process.env.CRM_LEAD_QUALIFIER_AI_ENABLED === "true" ? "AI" : "LOCAL", startedAt);
     if (!saved) await prisma.instagramConversation.updateMany({ where: lease, data: { qualificationStartedAt: null } });
   } catch {
     await prisma.instagramConversation.updateMany({ where: lease, data: { qualificationPending: false, qualificationStartedAt: null, qualificationError: "La qualification automatique est indisponible. Réessayez ou choisissez une qualification manuelle." } });
