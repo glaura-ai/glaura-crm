@@ -17,9 +17,10 @@ export async function queueLeadQualification(id: string, messageId: unknown, exp
 
 export async function persistQualification(id: string, message: QualificationMessage, result: Qualification, source: "AI" | "MANUAL", lease?: Date) {
   return prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT id FROM "InstagramConversation" WHERE id = ${id} FOR UPDATE`;
     const latest = await tx.instagramMessage.findFirst({ where: { conversationId: id, incoming: true }, orderBy: latestIncomingOrder });
     if (!latest || latest.id !== message.id || qualificationHash(latest.text) !== qualificationHash(message.text)) return false;
-    const saved = await tx.instagramConversation.updateMany({ where: { id, lastInboundAt: message.sentAt, ...(lease ? { qualificationStartedAt: lease, qualificationPending: true } : {}) }, data: {
+    const saved = await tx.instagramConversation.updateMany({ where: { id, ...(lease ? { qualificationStartedAt: lease, qualificationPending: true } : {}) }, data: {
       qualification: result.temperature, qualificationReason: result.reason, qualificationAction: result.action,
       qualificationConfidence: result.confidence, qualificationSource: source,
       qualifiedMessageId: message.id, qualifiedMessageHash: qualificationHash(message.text), qualifiedAt: new Date(),
