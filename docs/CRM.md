@@ -81,3 +81,13 @@ Le bloc **Cibler les salons Treatwell + Planity** lance une collecte des deux an
 Le filtre **Treatwell + Planity confirmés** affiche les correspondances vérifiées et leur date de vérification. Les rapprochements ambigus ou deux prospects déjà distincts ne sont pas fusionnés automatiquement : le bilan les signale. Une limite de résultats borne les fiches importées ; elle ne réduit pas le nombre de pages nécessaire pour comparer les annuaires. Les limites de pagination ou les erreurs de lecture peuvent laisser des établissements non détectés ; une absence de correspondance n’est pas une preuve d’absence de Planity.
 
 La migration `20261108140000_prospect_dual_platform` conserve les liens des anciennes fiches et ajoute les champs nécessaires à la double présence. Elle ne marque pas les anciens prospects comme confirmés sur les deux plateformes sans rapprochement.
+
+### Suivi commercial depuis la messagerie
+
+Chaque conversation peut être liée à une fiche salon existante ou à un nouveau salon. La liste et le panneau « Salon lié » affichent le statut commercial de cette fiche, son responsable et sa prochaine tâche non terminée. Si aucune tâche n’existe, la date de prochaine action de la fiche est utilisée. Les échéances dépassées apparaissent en rouge. Le lien « Voir les tâches du salon » ouvre le suivi commercial ; le statut se modifie depuis la fiche salon.
+
+Les vues « À traiter », « En attente », « Traitées » et « Toutes » concernent uniquement le traitement de la conversation. Le menu « Traitement » permet de changer de vue, sans modifier le statut commercial. Un nouveau message entrant rouvre la conversation ; rejouer un ancien message ne la rouvre pas.
+
+Les filtres « Sans lead », « Sans responsable » et « Relance en retard » se combinent avec le statut commercial, le commercial et la vue de traitement. Les filtres sont conservés pendant la pagination et après les actions. Les informations affichées concernent le salon lié, y compris les tâches créées depuis un autre canal. L’accès à la messagerie reste limité au compte administrateur configuré.
+
+Vérification locale des requêtes et transitions avec des données temporaires : `npx tsx scripts/verify-instagram-tracking.ts`. Ce script refuse toute base distante et nettoie ses propres données.

@@ -7,6 +7,7 @@ import { syncFirebaseInbox } from "./firebase-sync";
 import { inboxConfig, metaRequest } from "./client";
 import { storeInstagramMessage } from "./store";
 import { instagramReplyAllowed } from "./security";
+import { inboxHref } from "./tracking";
 import { parisDeadline } from "@/lib/crm-format";
 import { uniqueSalonSlug } from "@/lib/slugs";
 import { normalizeInstagramHandle } from "@/lib/instagram";
@@ -19,7 +20,8 @@ async function inboxAction(fd: FormData, work: (id: string) => Promise<void>) {
   let error: string | null = null;
   try { await work(id); } catch (e) { error = e instanceof z.ZodError ? "Vérifiez les champs du formulaire." : e instanceof Error ? e.message : "Opération impossible."; }
   revalidatePath("/instagram"); revalidatePath("/taches"); revalidatePath("/salons");
-  redirect(`/instagram?conversation=${encodeURIComponent(id)}${error ? `&error=${encodeURIComponent(error)}` : ""}`);
+  const location = inboxHref(Object.fromEntries(new URLSearchParams(String(fd.get("returnQuery") || ""))), { conversation: id });
+  redirect(`${location}${error ? `${location.includes("?") ? "&" : "?"}error=${encodeURIComponent(error)}` : ""}`);
 }
 
 export async function syncInstagramInbox(fd: FormData) {
@@ -76,6 +78,12 @@ export async function createTaskFromInstagram(fd: FormData) {
   });
 }
 
-export async function resolveInstagramConversation(fd: FormData) {
-  return inboxAction(fd, async id => { await prisma.instagramConversation.update({ where: { id }, data: { resolvedAt: new Date() } }); });
+export async function setInstagramConversationState(fd: FormData) {
+  return inboxAction(fd, async id => {
+    const state = z.enum(["open", "waiting", "done"]).parse(fd.get("state"));
+    await prisma.instagramConversation.update({ where: { id }, data: {
+      resolvedAt: state === "done" ? new Date() : null,
+      waitingAt: state === "waiting" ? new Date() : null,
+    } });
+  });
 }
