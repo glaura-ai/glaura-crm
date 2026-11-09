@@ -121,7 +121,7 @@ export async function getStatusCounts(viewer?: ViewerScope): Promise<Record<stri
 
 export async function getSalonOwners() {
   return prisma.user.findMany({
-    where: { assignedSalons: { some: {} } },
+    where: { active: true, assignedSalons: { some: {} } },
     orderBy: { name: "asc" },
     select: { id: true, name: true, email: true },
   });
