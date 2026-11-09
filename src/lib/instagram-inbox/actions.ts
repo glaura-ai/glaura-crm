@@ -2,6 +2,8 @@
 import { z } from "zod";
 import { requireInstagramAdmin } from "@/lib/access";
 import { prisma } from "@/lib/db";
+import { latestIncoming, queueLeadQualification, requireLatestIncoming, persistQualification } from "./qualification-jobs";
+import { currentQualification, temperatureSchema } from "./qualification";
 import { requestInstagramSync } from "./jobs";
 import { inboxConfig, metaRequest } from "./client";
 import { storeInstagramMessage } from "./store";
@@ -58,6 +60,9 @@ export async function linkInstagramSalon(fd: FormData) {
         await tx.instagramConversation.update({ where: { id }, data: { salonId: salon.id } });
       });
     }
+    const linked = await prisma.instagramConversation.findUniqueOrThrow({ where: { id } });
+    const incoming = await latestIncoming(id);
+    if (linked.salonId && currentQualification(linked, incoming)) await prisma.salon.updateMany({ where: { id: linked.salonId, archivedAt: null }, data: { leadTemperature: linked.qualification } });
   });
 }
 
@@ -66,12 +71,18 @@ export async function createTaskFromInstagram(fd: FormData) {
     const d = z.object({ requestKey: z.uuid(), title: z.string().trim().min(1).max(200), context: z.string().trim().max(4000), assignedToId: z.string().min(1), dueAt: z.string() }).parse(Object.fromEntries(fd));
     const conversation = await prisma.instagramConversation.findUniqueOrThrow({ where: { id } });
     if (!conversation.salonId) throw new Error("Liez d’abord cette conversation à un salon.");
+    const sourceMessage = await requireLatestIncoming(id, fd.get("sourceMessageId"), fd.get("sourceMessageHash"));
     if (!await prisma.user.findFirst({ where: { id: d.assignedToId, active: true } })) throw new Error("Choisissez un responsable actif.");
     await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "InstagramConversation" WHERE id = ${id} FOR UPDATE`;
+      const currentConversation = await tx.instagramConversation.findUniqueOrThrow({ where: { id } });
+      if (currentConversation.salonId !== conversation.salonId) throw new Error("Le salon lié a changé. Actualisez la conversation avant de créer la tâche.");
+      const currentMessage = await tx.instagramMessage.findFirst({ where: { conversationId: id, incoming: true }, orderBy: [{ sentAt: "desc" }, { id: "desc" }] });
+      if (currentMessage?.id !== sourceMessage.id || currentMessage.text !== sourceMessage.text) throw new Error("Un nouveau message est arrivé. Actualisez la conversation avant de créer la tâche.");
       const salon = await tx.salon.findUniqueOrThrow({ where: { id: conversation.salonId! } });
       if (salon.assignedToId && salon.assignedToId !== d.assignedToId) throw new Error("Choisissez le responsable du salon ou réattribuez sa fiche avant de créer la tâche.");
-      await tx.salon.update({ where: { id: salon.id }, data: { assignedToId: d.assignedToId } });
-      await tx.salesTask.upsert({ where: { requestKey: d.requestKey }, update: {}, create: { requestKey: d.requestKey, title: d.title, context: d.context || null, dueAt: parisDeadline(d.dueAt), assignedToId: d.assignedToId, salonId: salon.id, instagramConversationId: id } });
+      await tx.salon.update({ where: { id: salon.id }, data: { assignedToId: d.assignedToId, ...(currentQualification(currentConversation, sourceMessage) ? { leadTemperature: currentConversation.qualification } : {}) } });
+      await tx.salesTask.upsert({ where: { requestKey: d.requestKey }, update: {}, create: { requestKey: d.requestKey, title: d.title, context: d.context || null, dueAt: parisDeadline(d.dueAt), assignedToId: d.assignedToId, salonId: salon.id, instagramConversationId: id, instagramMessageId: sourceMessage.id } });
     });
   });
 }
@@ -83,5 +94,19 @@ export async function setInstagramConversationState(fd: FormData) {
       resolvedAt: state === "done" ? new Date() : null,
       waitingAt: state === "waiting" ? new Date() : null,
     } });
+  });
+}
+
+export async function qualifyInstagramLead(fd: FormData) {
+  return inboxAction(fd, async id => { await queueLeadQualification(id, fd.get("sourceMessageId"), fd.get("sourceMessageHash")); });
+}
+
+export async function overrideInstagramQualification(fd: FormData) {
+  return inboxAction(fd, async id => {
+    const temperature = temperatureSchema.parse(fd.get("temperature"));
+    const message = await requireLatestIncoming(id, fd.get("sourceMessageId"), fd.get("sourceMessageHash"));
+    const actions = { CHAUD: "Proposer un rendez-vous ou une démonstration", TIEDE: "Préciser les besoins et répondre aux questions du salon", A_RECONTACTER: "Planifier une relance à la date convenue", FROID: "Clôturer la prospection et respecter le refus du salon" };
+    const saved = await persistQualification(id, message, { temperature, reason: "Qualification ajustée manuellement par l’administration.", action: actions[temperature], confidence: "HIGH" }, "MANUAL");
+    if (!saved) throw new Error("Le message a changé. Actualisez la conversation avant de qualifier le lead.");
   });
 }

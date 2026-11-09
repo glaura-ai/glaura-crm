@@ -1,4 +1,5 @@
 import type { Prisma, SalonStatus } from "@/generated/prisma/client";
+import { temperatureSchema } from "./qualification";
 import { STATUS_ORDER } from "@/lib/labels";
 
 type Params = Record<string, string | undefined>;
@@ -11,6 +12,7 @@ export function conversationWhere(sp: Params, now = new Date()): Prisma.Instagra
     { tasks: { none: { doneAt: null } }, nextActionAt: { lt: now } },
   ] } } });
   if (STATUS_ORDER.includes(sp.status as SalonStatus)) AND.push({ salon: { is: { status: sp.status as SalonStatus } } });
+  if (temperatureSchema.safeParse(sp.temperature).success) AND.push({ qualification: sp.temperature, qualificationPending: false });
   if (sp.owner) AND.push({ salon: { is: { assignedToId: sp.owner } } });
   return {
     ...(sp.view === "done" ? { resolvedAt: { not: null } } : sp.view === "waiting" ? { resolvedAt: null, waitingAt: { not: null } } : sp.view === "all" ? {} : { resolvedAt: null, waitingAt: null }),
@@ -21,7 +23,7 @@ export function conversationWhere(sp: Params, now = new Date()): Prisma.Instagra
 // Whitelist internal inbox parameters so links and action redirects preserve the view.
 export function inboxHref(sp: Params, changes: Record<string, string | null> = {}) {
   const params = new URLSearchParams();
-  for (const key of ["view", "filter", "status", "owner", "page", "conversation", "q"]) {
+  for (const key of ["view", "filter", "status", "temperature", "owner", "page", "conversation", "q"]) {
     const value = key in changes ? changes[key] : sp[key];
     if (value) params.set(key, value);
   }

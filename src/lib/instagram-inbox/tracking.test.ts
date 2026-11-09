@@ -29,3 +29,7 @@ it("keeps filters across selection and pagination and drops unknown query parame
   const url = new URL(inboxHref({ view: "waiting", filter: "overdue", owner: "sales-id", page: "2", conversation: "old", error: "old", evil: "x" }, { conversation: "new", page: null }), "https://crm.test");
   expect(Object.fromEntries(url.searchParams)).toEqual({ view: "waiting", filter: "overdue", owner: "sales-id", conversation: "new" });
 });
+it("filters by current lead qualification independently of sales stage", () => {
+  expect(conversationWhere({ temperature: "CHAUD", status: "INTERESSE" }, now)).toMatchObject({ AND: expect.arrayContaining([{ qualification: "CHAUD", qualificationPending: false }, { salon: { is: { status: "INTERESSE" } } }]) });
+  expect(inboxHref({ temperature: "CHAUD" }, { page: "2" })).toContain("temperature=CHAUD");
+});

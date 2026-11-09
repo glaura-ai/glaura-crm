@@ -501,6 +501,7 @@ model SalesTask {
   prospect                Prospect? @relation(fields: [prospectId], references: [id], onDelete: SetNull)
   salonId                 String?
   salon                   Salon?    @relation(fields: [salonId], references: [id], onDelete: SetNull)
+  instagramMessageId      String?
   instagramConversationId String?
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
@@ -539,6 +540,17 @@ model InstagramConversation {
   lastMessageAt DateTime
   lastInboundAt DateTime?
   resolvedAt    DateTime?
+  qualification String?
+  qualificationReason String?
+  qualificationAction String?
+  qualificationConfidence String?
+  qualificationSource String?
+  qualifiedMessageId String?
+  qualifiedMessageHash String?
+  qualifiedAt DateTime?
+  qualificationPending Boolean @default(false)
+  qualificationStartedAt DateTime?
+  qualificationError String?
   messages      InstagramMessage[]
 
   @@index([salonId])
