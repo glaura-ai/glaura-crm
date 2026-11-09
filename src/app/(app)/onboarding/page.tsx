@@ -40,8 +40,9 @@ export default async function OnboardingMonitorPage({
     <div className="mx-auto max-w-7xl p-6">
       <div className="mb-5 flex items-end justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-rose-500">Suivi des activations</p>
-          <h1 className="mt-1 text-3xl font-semibold text-slate-900">Performance Claude</h1>
+          <p className="text-sm font-medium text-rose-500">Onboarding des salons</p>
+          <h1 className="mt-1 text-3xl font-semibold text-slate-900">Création de comptes salons</h1>
+          <p className="mt-2 text-sm text-slate-500">Suivez les créations de comptes automatisées par Claude, leur avancement et les erreurs à vérifier.</p>
         </div>
         <Link href="/salons" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
           Salons
@@ -50,7 +51,7 @@ export default async function OnboardingMonitorPage({
 
       <section className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <Metric label="Traitements sur 30 jours" value={monitor.metrics.total30d} />
-        <Metric label="Succes" value={`${monitor.metrics.successRate30d}%`} tone="text-emerald-600" />
+        <Metric label="Succès" value={`${monitor.metrics.successRate30d}%`} tone="text-emerald-600" />
         <Metric label="Échecs" value={monitor.metrics.failed30d} tone="text-rose-600" />
         <Metric label="En cours" value={monitor.metrics.processing30d} tone="text-sky-600" />
         <Metric label="p50" value={formatDuration(monitor.metrics.p50DurationMs)} />
@@ -69,10 +70,10 @@ export default async function OnboardingMonitorPage({
                 <tr>
                   <th className="w-[28%] px-3 py-2">Salon</th>
                   <th className="w-[14%] px-3 py-2">Statut</th>
-                  <th className="w-[11%] px-3 py-2">Duree</th>
+                  <th className="w-[11%] px-3 py-2">Durée</th>
                   <th className="w-[15%] px-3 py-2">Sortie</th>
-                  <th className="w-[12%] px-3 py-2">Items</th>
-                  <th className="w-[20%] px-3 py-2">Lance par</th>
+                  <th className="w-[12%] px-3 py-2">Services / équipe</th>
+                  <th className="w-[20%] px-3 py-2">Lancé par</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
@@ -120,7 +121,7 @@ export default async function OnboardingMonitorPage({
           </div>
 
           {!selected ? (
-            <p className="text-sm text-slate-400">Aucune activation.</p>
+            <p className="text-sm text-slate-400">Aucune création de compte enregistrée.</p>
           ) : events.length === 0 ? (
             <p className="text-sm text-slate-400">Aucun évènement enregistré pour ce traitement.</p>
           ) : (
