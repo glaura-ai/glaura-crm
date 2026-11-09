@@ -2,8 +2,7 @@
 import { z } from "zod";
 import { requireInstagramAdmin } from "@/lib/access";
 import { prisma } from "@/lib/db";
-import { syncInstagramHistory } from "./sync";
-import { syncFirebaseInbox } from "./firebase-sync";
+import { requestInstagramSync } from "./jobs";
 import { inboxConfig, metaRequest } from "./client";
 import { storeInstagramMessage } from "./store";
 import { instagramReplyAllowed } from "./security";
@@ -26,8 +25,7 @@ async function inboxAction(fd: FormData, work: (id: string) => Promise<void>) {
 
 export async function syncInstagramInbox(fd: FormData) {
   return inboxAction(fd, async () => {
-    await syncInstagramHistory();
-    await syncFirebaseInbox();
+    await requestInstagramSync();
   });
 }
 

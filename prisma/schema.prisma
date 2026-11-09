@@ -555,3 +555,19 @@ model InstagramMessage {
 
   @@index([conversationId, sentAt])
 }
+
+// Singleton queue and progress for the private admin inbox history import.
+model InstagramSync {
+  id String @id
+  status String @default("QUEUED")
+  stage String?
+  metaConversations Int @default(0)
+  metaMessages Int @default(0)
+  firebaseThreads Int @default(0)
+  firebaseMessages Int @default(0)
+  requestedAt DateTime @default(now())
+  startedAt DateTime?
+  heartbeatAt DateTime?
+  finishedAt DateTime?
+  error String?
+}

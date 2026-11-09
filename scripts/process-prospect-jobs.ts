@@ -5,6 +5,8 @@ loadEnvConfig(process.cwd());
 
 async function main() {
   const { prisma } = await import("../src/lib/db");
+  const { startInstagramSyncWorker } = await import("../src/lib/instagram-inbox/jobs");
+  const stopHistorySync = process.argv.includes("--loop") ? startInstagramSyncWorker() : () => {};
   const { startFirebaseInboxSync } = await import("../src/lib/instagram-inbox/firebase-sync");
   const stopInboxSync = process.argv.includes("--loop") ? startFirebaseInboxSync() : () => {};
   const { ZONE_BY_SLUG } = await import("../src/lib/prospection/zones");
@@ -47,6 +49,7 @@ async function main() {
     } finally { if (timer) clearInterval(timer); }
   } while (true);
   stopInboxSync();
+  stopHistorySync();
   await prisma.$disconnect();
 }
 main().catch(() => { console.error("Le service de prospection a rencontré une erreur."); process.exitCode = 1; });

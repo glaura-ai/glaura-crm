@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ admin: vi.fn(), conversation: vi.fn(), update: vi.fn(), config: vi.fn(), request: vi.fn(), store: vi.fn() }));
+const mocks = vi.hoisted(() => ({ admin: vi.fn(), conversation: vi.fn(), update: vi.fn(), queue: vi.fn(), config: vi.fn(), request: vi.fn(), store: vi.fn() }));
 vi.mock("@/lib/access", () => ({ requireInstagramAdmin: mocks.admin }));
 vi.mock("@/lib/db", () => ({ prisma: { instagramConversation: { findUniqueOrThrow: mocks.conversation, update: mocks.update } } }));
 vi.mock("./client", () => ({ inboxConfig: mocks.config, metaRequest: mocks.request }));
 vi.mock("./store", () => ({ storeInstagramMessage: mocks.store }));
+vi.mock("./jobs", () => ({ requestInstagramSync: mocks.queue }));
 vi.mock("./sync", () => ({ syncInstagramHistory: vi.fn() }));
 vi.mock("./firebase-sync", () => ({ syncFirebaseInbox: vi.fn() }));
 vi.mock("@/lib/slugs", () => ({ uniqueSalonSlug: vi.fn() }));
@@ -68,4 +69,17 @@ it("preserves the inbox filters after handling a conversation", async () => {
   const { setInstagramConversationState } = await import("./actions");
   const fd = form(); fd.set("state", "waiting"); fd.set("returnQuery", "view=all&filter=overdue&owner=sales-id&page=2");
   await expect(setInstagramConversationState(fd)).rejects.toThrow("/instagram?view=all&filter=overdue&owner=sales-id&page=2&conversation=glaura-ig%3Acontact");
+});
+
+it("returns promptly after queueing history without fetching provider data in the server action", async () => {
+  const { syncInstagramInbox } = await import("./actions");
+  await expect(syncInstagramInbox(form())).rejects.toThrow("/instagram?");
+  expect(mocks.queue).toHaveBeenCalledOnce();
+  expect(mocks.request).not.toHaveBeenCalled();
+});
+it("does not queue an import for a user without private inbox access", async () => {
+  const { syncInstagramInbox } = await import("./actions");
+  mocks.admin.mockRejectedValue(new Error("Forbidden"));
+  await expect(syncInstagramInbox(form())).rejects.toThrow("Forbidden");
+  expect(mocks.queue).not.toHaveBeenCalled();
 });

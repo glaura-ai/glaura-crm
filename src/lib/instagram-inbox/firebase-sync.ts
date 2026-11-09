@@ -1,3 +1,4 @@
+import { reportSyncProgress, type SyncOptions } from "./progress";
 import { Timestamp } from "firebase-admin/firestore";
 import { getDb } from "@/lib/firebase-admin";
 import { inboxConfig } from "./client";
@@ -17,7 +18,7 @@ export function firebaseMessage(id: string, participantId: string, thread: Recor
   };
 }
 
-export async function syncFirebaseInbox(since?: Date) {
+export async function syncFirebaseInbox(since?: Date, options: SyncOptions = {}) {
   if (!process.env.CRM_INSTAGRAM_PROVIDER_ID) return { messages: 0 };
   const config = await inboxConfig();
   if (!config?.providerId) return { messages: 0 };
@@ -25,17 +26,24 @@ export async function syncFirebaseInbox(since?: Date) {
   const query = since ? collection.where("updatedAt", ">=", Timestamp.fromDate(since)) : collection;
   let cursor: FirebaseFirestore.QueryDocumentSnapshot | undefined;
   let count = 0;
+  let conversations = 0;
+  await reportSyncProgress(options, { stage: "FIREBASE", conversations, messages: count });
   for (let page = 0; page < 10; page++) {
+    options.signal?.throwIfAborted();
     const ordered = query.orderBy("updatedAt", "desc").limit(50);
     const threads = await (cursor ? ordered.startAfter(cursor) : ordered).get();
     for (const thread of threads.docs) {
+      options.signal?.throwIfAborted();
       const metadata = thread.data();
       if (metadata.channel && metadata.channel !== "instagram") continue;
       const messages = await thread.ref.collection("messages").orderBy("timestamp", "desc").limit(100).get();
       for (const doc of messages.docs) {
+        options.signal?.throwIfAborted();
         const message = firebaseMessage(doc.id, thread.id, metadata, doc.data());
         if (message) { await storeInstagramMessage(config.accountId, message); count++; }
       }
+      conversations++;
+      await reportSyncProgress(options, { stage: "FIREBASE", conversations, messages: count });
     }
     cursor = threads.docs.at(-1);
     if (threads.size < 50) break;

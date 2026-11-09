@@ -68,7 +68,7 @@ Dans Meta, vérifier le lien Page/compte Instagram, les permissions `instagram_b
 
 URL du webhook : `https://crm.glaura.ai/api/instagram/webhook`. La vérification GET utilise le secret d’abonnement ; les notifications POST exigent une signature HMAC SHA-256 valide sur le corps exact et l’identifiant du compte Glaura. Les notifications sont enregistrées par identifiant de message, donc les répétitions ne créent pas de doublons. Une erreur de stockage renvoie un statut permettant à Meta de réessayer.
 
-Le bouton de synchronisation importe jusqu’à 100 conversations et leurs 100 derniers messages. Les réceptions suivantes arrivent par webhook. Ce premier import est borné ; ce n’est pas une garantie d’archive historique exhaustive. Les demandes inactives depuis plus de 30 jours, les groupes et certains contenus ne sont pas accessibles. Les pièces jointes sont signalées avec un renvoi vers Instagram. Les réponses depuis le CRM sont limitées à 24 heures après le dernier message entrant ; aucun envoi automatique n’est effectué.
+Les nouveaux messages arrivent dans Firebase par le webhook existant. Le CRM récupère automatiquement les mises à jour toutes les 30 secondes et la page s’actualise automatiquement ; aucune action manuelle n’est nécessaire. L’action facultative « Importer l’historique » parcourt jusqu’à 100 conversations Meta et leurs 100 derniers messages, puis les archives Firebase disponibles. Ce premier import est borné ; ce n’est pas une garantie d’archive historique exhaustive. Les demandes inactives depuis plus de 30 jours, les groupes et certains contenus ne sont pas accessibles. Les pièces jointes sont signalées avec un renvoi vers Instagram. Les réponses depuis le CRM sont limitées à 24 heures après le dernier message entrant ; aucun envoi automatique n’est effectué.
 
 Pour transmettre une action aux commerciaux : lier ou créer un salon, choisir son responsable, saisir une action et le contexte à partager. Le CRM conserve le fil complet dans l’espace privé de l’administrateur.
 
@@ -91,3 +91,9 @@ Les vues « À traiter », « En attente », « Traitées » et « Toutes » con
 Les filtres « Sans lead », « Sans responsable » et « Relance en retard » se combinent avec le statut commercial, le commercial et la vue de traitement. Les filtres sont conservés pendant la pagination et après les actions. Les informations affichées concernent le salon lié, y compris les tâches créées depuis un autre canal. L’accès à la messagerie reste limité au compte administrateur configuré.
 
 Vérification locale des requêtes et transitions avec des données temporaires : `npx tsx scripts/verify-instagram-tracking.ts`. Ce script refuse toute base distante et nettoie ses propres données.
+
+### Import facultatif de l’historique Instagram
+
+L’import manuel est mis en file dans `InstagramSync` puis exécuté par le service de prospection en arrière-plan. Le navigateur est libéré dès la mise en file. Une seule demande peut être en file ou en cours ; les doubles clics ne lancent pas plusieurs imports. La page affiche les compteurs de conversations et messages vérifiés pour Meta et Firebase, l’étape et la dernière progression. Les compteurs comprennent les messages déjà présents et ne désignent pas uniquement de nouveaux messages.
+
+Le traitement émet un signal de vie toutes les 15 secondes. Un traitement abandonné est marqué interrompu après cinq minutes sans signal de vie ; la durée maximale d’un import est de 20 minutes. Les messages déjà enregistrés restent disponibles en cas d’échec. Les erreurs affichées ne contiennent aucun jeton, contenu de message ou réponse brute de fournisseur. Ce mécanisme est distinct de la réception automatique, qui continue par le webhook Firebase existant.
