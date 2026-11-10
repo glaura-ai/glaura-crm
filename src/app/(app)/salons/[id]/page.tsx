@@ -1,5 +1,6 @@
 import { LEAD_TEMPERATURE_LABEL } from "@/lib/labels";
 import Link from "next/link";
+import { LeadProvenance } from "@/components/LeadProvenance";
 import { notFound } from "next/navigation";
 import { requireMember } from "@/lib/access";
 import { frenchDate } from "@/lib/crm-format";
@@ -188,7 +189,7 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
                 <Row label="Assigné à" value={salon.assignedTo?.name ?? salon.assignedTo?.email ?? null} />
                 <Row label="Priorité" value={salon.priorityLabel} />
                 <Row label="Lead" value={salon.leadTemperature ? LEAD_TEMPERATURE_LABEL[salon.leadTemperature] ?? salon.leadTemperature : null} />
-                <Row label="Source" value={salon.sourceLabel} />
+                <Row label="Provenance" value={<LeadProvenance lead={salon} />} />
                 <Row label="Compte" value={salon.accountStatusLabel} />
                 <Row label="Signature" value={formatDate(salon.signedAt)} />
                 <Row label="Activation" value={formatDate(salon.activatedAt)} />

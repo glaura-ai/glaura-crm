@@ -79,7 +79,7 @@ export async function getSalons(f: SalonFilters, viewer: ViewerScope) {
   const page = Math.max(1, Math.min(100000, Number.parseInt(f.page ?? "", 10) || 1));
   return prisma.salon.findMany({ where, skip: (page - 1) * 50, take: 50,
     orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
-    include: { assignedTo: { select: { id: true, name: true, email: true } }, tasks: { where: { doneAt: null }, orderBy: { dueAt: "asc" }, take: 1, select: { title: true, dueAt: true } } },
+    include: { prospect: { select: { source: true, sourceUrl: true } }, assignedTo: { select: { id: true, name: true, email: true } }, tasks: { where: { doneAt: null }, orderBy: { dueAt: "asc" }, take: 1, select: { title: true, dueAt: true } } },
   });
 }
 export async function getSalonCount(f: SalonFilters, viewer: ViewerScope) {
@@ -95,7 +95,7 @@ export async function getSalon(id: string, viewer?: ViewerScope) {
       ...(viewer && viewer.role !== "ADMIN" ? { assignedToId: viewer.id } : {}),
     },
     include: {
-      prospect: { select: { treatwellUrl: true, planityUrl: true, dualPlatformCheckedAt: true } },
+      prospect: { select: { source: true, sourceUrl: true, treatwellUrl: true, planityUrl: true, dualPlatformCheckedAt: true } },
       assignedTo: { select: { name: true, email: true } },
       activities: { orderBy: { createdAt: "desc" }, include: { user: { select: { name: true } } } },
       reminders: { orderBy: [{ archivedAt: { sort: "asc", nulls: "first" } }, { done: "asc" }, { dueAt: "asc" }] },

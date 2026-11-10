@@ -6,6 +6,7 @@
 - **Prospection** conserve la base existante, paginée par 50 lignes. Recherche, zone, responsable, statut et comptes Instagram à confirmer sont filtrables. L’administrateur attribue une sélection avec une action et une échéance. Les commerciaux voient seulement leurs prospects, y compris les anciennes attributions par tournée.
 - **Mes tâches** conserve les actions jusqu’à leur clôture, avec un résultat obligatoire. Les rappels existants restent visibles. Les tournées anciennes inachevées restent accessibles.
 - **Salons et suivi** conserve les fiches et l’historique existants. Le tableau est la vue par défaut ; les fiches restent disponibles. Les listes sont paginées.
+- **Provenance** affiche la source de découverte du prospect converti et son lien, ou le libellé de source enregistré sur le salon. Un import Airtable reste indiqué séparément du canal d’acquisition. Aucun canal n’est déduit du simple renseignement d’un compte Instagram ou d’un logiciel de réservation.
 - **Équipe et accès** permet d’autoriser des comptes Google, de désactiver un membre et de transférer son travail ouvert. Les activités historiques conservent leur auteur. Le contrôle de membre actif et du rôle est refait pour chaque session.
 - **Messagerie Instagram** est réservée à un seul compte administrateur, défini ci-dessous. Les autres administrateurs et commerciaux ne peuvent pas accéder à ses pages ou actions. Les tâches ne donnent accès qu’au contexte explicitement saisi par l’administrateur ; elles n’exposent ni messages ni référence privée de conversation.
 

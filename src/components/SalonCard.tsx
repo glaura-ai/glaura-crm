@@ -11,6 +11,7 @@ import {
   TYPE_STYLE,
 } from "@/lib/labels";
 import { cn } from "@/lib/utils";
+import { LeadProvenance } from "@/components/LeadProvenance";
 
 export function SalonCard({ salon, canDelete = false }: { salon: SalonListItem; canDelete?: boolean }) {
   return (
@@ -40,6 +41,7 @@ export function SalonCard({ salon, canDelete = false }: { salon: SalonListItem; 
       </div>
 
       <p className="mt-2 text-sm text-slate-500">{salon.address ?? "Adresse inconnue"}</p>
+      <div className="mt-2"><span className="mr-2 text-xs text-slate-400">Provenance</span><LeadProvenance lead={salon} /></div>
       {(salon.contactName || salon.assignedTo) && (
         <p className="mt-1 truncate text-xs text-slate-400">
           {salon.contactName ? `${salon.contactName}` : ""}
