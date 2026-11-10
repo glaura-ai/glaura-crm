@@ -107,3 +107,9 @@ Les nouveaux messages entrants récents sont automatiquement mis en file pour qu
 L’analyse conserve son message source et l’empreinte de son contenu. Un nouveau message ou une modification du message invalide l’analyse précédente. Les traitements concurrents sont contrôlés par une prise en charge conditionnelle ; une réponse IA arrivée après une correction manuelle ou un message plus récent est ignorée. Les erreurs de fournisseur ne sont pas affichées brutes.
 
 Le panneau présente la raison et l’action proposée et permet une correction manuelle. Seule la température est reportée sur le salon lié ; les messages et la justification restent réservés au compte administrateur de la messagerie. Les tâches préremplissent l’action proposée et enregistrent le message entrant source. La création refuse un formulaire dont le message ou le salon lié a changé. Le contexte partagé reste celui explicitement saisi par l’administrateur. Aucun message Instagram ni tâche n’est envoyé ou créé automatiquement par le qualificateur.
+
+### Tableau de bord simplifié
+
+La vue « Aujourd’hui » conserve le filtre des commerciaux actifs, les prochaines tâches, les compteurs de tâches en retard/prospects à attribuer/messages Instagram et la vue d’ensemble des salons. Les anciennes priorités de visite automatiques, relances historiques, objectifs de visites et graphiques de conversion sont retirés du tableau de bord.
+
+Les anciens rappels peuvent être archivés avec `Reminder.archivedAt`, sans les marquer réalisés ni supprimer leur historique. Ils restent visibles comme « Archivé » sur la fiche salon et ne figurent plus dans les tâches ouvertes. Les statuts commerciaux, les activités et les conversations Instagram sont conservés.

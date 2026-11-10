@@ -363,12 +363,12 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
             </form>
             <ul className="mt-4 space-y-2">
               {salon.reminders.map((r) => (
-                <li key={r.id} className={cn("flex items-center justify-between rounded-lg p-2 text-sm", r.done ? "bg-slate-50 text-slate-400 line-through" : "bg-amber-50")}>
+                <li key={r.id} className={cn("flex items-center justify-between rounded-lg p-2 text-sm", (r.done || r.archivedAt) ? "bg-slate-50 text-slate-400 line-through" : "bg-amber-50")}>
                   <div>
-                    <div className={cn(!r.done && "font-medium text-slate-700")}>{r.title}</div>
-                    <div className="text-xs text-slate-400">{frenchDate(r.dueAt, true)}</div>
+                    <div className={cn(!r.done && !r.archivedAt && "font-medium text-slate-700")}>{r.title}</div>
+                    <div className="text-xs text-slate-400">{frenchDate(r.dueAt, true)}{r.archivedAt ? " · Archivé" : ""}</div>
                   </div>
-                  {!r.done && (
+                  {!r.done && !r.archivedAt && (
                     <form action={completeReminder.bind(null, r.id, id)}>
                       <button className="rounded-md px-2 py-1 text-xs font-medium text-emerald-600 hover:bg-emerald-50">✓</button>
                     </form>

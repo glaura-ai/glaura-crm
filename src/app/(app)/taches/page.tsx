@@ -23,7 +23,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     prisma.salesTask.count({ where }), admin ? getAssignableUsers() : Promise.resolve([]),
     sp.prospect ? prisma.prospect.findFirst({ where: { id: sp.prospect, ...prospectScope(user) }, include: { tournee: true } }) : null,
     sp.salon ? prisma.salon.findFirst({ where: { id: sp.salon, ...(admin ? {} : { assignedToId: user.id }) } }) : null,
-    done ? Promise.resolve([]) : prisma.reminder.findMany({ where: { done: false, ...(owner ? { userId: owner } : {}), salon: { archivedAt: null, ...(!admin ? { assignedToId: user.id } : {}) } }, orderBy: { dueAt: "asc" }, take: 50, include: { salon: { select: { id: true, name: true } } } }),
+    done ? Promise.resolve([]) : prisma.reminder.findMany({ where: { done: false, archivedAt: null, ...(owner ? { userId: owner } : {}), salon: { archivedAt: null, ...(!admin ? { assignedToId: user.id } : {}) } }, orderBy: { dueAt: "asc" }, take: 50, include: { salon: { select: { id: true, name: true } } } }),
   ]);
   const initialOwner = prospect?.assignedToId ?? prospect?.tournee?.assignedToId ?? salon?.assignedToId ?? user.id;
   const href = (nextPage: number) => { const qs = new URLSearchParams(); if (owner) qs.set("owner", owner); if (done) qs.set("view", "done"); qs.set("page", String(nextPage)); return `/taches?${qs}`; };

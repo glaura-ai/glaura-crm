@@ -331,6 +331,7 @@ model Reminder {
   title     String
   dueAt     DateTime
   done      Boolean   @default(false)
+  archivedAt DateTime?
   doneAt    DateTime?
   createdAt DateTime  @default(now())
 

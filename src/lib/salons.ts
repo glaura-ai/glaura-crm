@@ -98,7 +98,7 @@ export async function getSalon(id: string, viewer?: ViewerScope) {
       prospect: { select: { treatwellUrl: true, planityUrl: true, dualPlatformCheckedAt: true } },
       assignedTo: { select: { name: true, email: true } },
       activities: { orderBy: { createdAt: "desc" }, include: { user: { select: { name: true } } } },
-      reminders: { orderBy: [{ done: "asc" }, { dueAt: "asc" }] },
+      reminders: { orderBy: [{ archivedAt: { sort: "asc", nulls: "first" } }, { done: "asc" }, { dueAt: "asc" }] },
       onboardingJobs: { orderBy: { createdAt: "desc" } },
       emailJobs: { orderBy: { createdAt: "desc" }, take: 5 },
     },

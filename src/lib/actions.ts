@@ -182,7 +182,7 @@ export async function updateSalon(id: string, fd: FormData) {
     await tx.salon.update({ where: { id }, data: { ...d, slug, priorityDate, ...(assignedToId ? { assignedToId } : {}) } });
     if (assignedToId) {
       await tx.salesTask.updateMany({ where: { salonId: id, doneAt: null }, data: { assignedToId } });
-      await tx.reminder.updateMany({ where: { salonId: id, done: false }, data: { userId: assignedToId } });
+      await tx.reminder.updateMany({ where: { salonId: id, done: false, archivedAt: null }, data: { userId: assignedToId } });
       await tx.prospect.updateMany({ where: { salonId: id }, data: { assignedToId } });
     }
   });
@@ -259,7 +259,7 @@ export async function addReminder(salonId: string, fd: FormData) {
 export async function completeReminder(reminderId: string, salonId: string) {
   await assertCanAccessSalon(salonId);
   await prisma.$transaction([
-    prisma.reminder.update({ where: { id: reminderId, salonId }, data: { done: true, doneAt: new Date() } }),
+    prisma.reminder.update({ where: { id: reminderId, salonId, archivedAt: null }, data: { done: true, doneAt: new Date() } }),
     prisma.salon.update({ where: { id: salonId }, data: { priorityDate: null } }),
   ]);
   revalidatePath(`/salons/${salonId}`);

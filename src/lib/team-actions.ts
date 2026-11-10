@@ -38,7 +38,7 @@ export async function transferMemberWork(fd: FormData) {
     await tx.prospect.updateMany({ where: { OR: [{ assignedToId: d.from }, { assignedToId: null, tournee: { assignedToId: d.from } }] }, data: { assignedToId: d.to } });
     await tx.tournee.updateMany({ where: { assignedToId: d.from }, data: { assignedToId: d.to } });
     await tx.salesTask.updateMany({ where: { assignedToId: d.from, doneAt: null }, data: { assignedToId: d.to } });
-    await tx.reminder.updateMany({ where: { userId: d.from, done: false }, data: { userId: d.to } });
+    await tx.reminder.updateMany({ where: { userId: d.from, done: false, archivedAt: null }, data: { userId: d.to } });
   });
   revalidatePath("/administration"); revalidatePath("/prospection"); revalidatePath("/taches"); revalidatePath("/salons"); revalidatePath("/dashboard");
 }

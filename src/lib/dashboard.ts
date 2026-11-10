@@ -1,97 +1,22 @@
 import { prisma } from "@/lib/db";
-import { activeDailyPriorityDateFilter, endOfDay, startOfDay } from "@/lib/dailyPriority";
-import type { SalonStatus, SalonType } from "@/generated/prisma/enums";
+import { endOfDay, startOfDay } from "@/lib/dailyPriority";
+import type { SalonType } from "@/generated/prisma/enums";
 
 const TYPE_ORDER: SalonType[] = ["A", "B", "C", "D"];
-const FUNNEL_STATUSES: SalonStatus[] = ["A_VISITER", "VISITE_FAITE", "INTERESSE", "SIGNE"];
-
-function startOfWeek(d: Date): Date {
-  const v = startOfDay(d);
-  const day = v.getDay();
-  v.setDate(v.getDate() + (day === 0 ? -6 : 1 - day));
-  return v;
-}
 
 export async function getDashboard(today = new Date(), ownerId?: string) {
-  const dayStart = startOfDay(today);
-  const dayEnd = endOfDay(today);
-  const weekStart = startOfWeek(today);
-  // Archived salons (merged duplicates, manual archives) are out of the pipeline.
   const salonScope = { archivedAt: null, ...(ownerId ? { assignedToId: ownerId } : {}) };
-  const activityScope = ownerId ? { userId: ownerId } : {};
-
-  const [
-    totalSalons,
-    typeRows,
-    statusRows,
-    visitsThisWeek,
-    doneToday,
-    dailyPriorities,
-    visitPriorities,
-    dueReminders,
-    staleFollowups,
-    todaysActions,
-  ] = await Promise.all([
+  const [totalSalons, typeRows, statusRows, doneToday] = await Promise.all([
     prisma.salon.count({ where: salonScope }),
     prisma.salon.groupBy({ by: ["type"], where: { ...salonScope, type: { not: null } }, _count: { _all: true } }),
     prisma.salon.groupBy({ by: ["status"], where: salonScope, _count: { _all: true } }),
-    prisma.activity.count({ where: { ...activityScope, type: "VISITE", createdAt: { gte: weekStart, lte: dayEnd } } }),
-    prisma.activity.count({ where: { ...activityScope, createdAt: { gte: dayStart, lte: dayEnd } } }),
-    prisma.salon.findMany({
-      where: { ...salonScope, priorityDate: activeDailyPriorityDateFilter(today) },
-      orderBy: [{ priorityDate: "asc" }, { type: "asc" }, { rating: "desc" }],
-      take: 10,
-      include: { assignedTo: { select: { name: true, email: true } } },
-    }),
-    prisma.salon.findMany({
-      where: { ...salonScope, status: "A_VISITER" },
-      orderBy: [{ type: "asc" }, { rating: "desc" }, { updatedAt: "asc" }],
-      take: 5,
-      include: { assignedTo: { select: { name: true, email: true } } },
-    }),
-    prisma.reminder.findMany({
-      where: { ...(ownerId ? { userId: ownerId } : {}), done: false, dueAt: { lte: dayEnd }, salon: { archivedAt: null } },
-      orderBy: { dueAt: "asc" },
-      take: 5,
-      include: { salon: { select: { id: true, name: true, status: true, type: true } } },
-    }),
-    prisma.salon.findMany({
-      where: {
-        ...salonScope,
-        status: { in: ["INTERESSE", "VISITE_FAITE", "A_RELANCER"] },
-        OR: [{ nextActionAt: { lte: dayEnd } }, { lastContactedAt: { lt: new Date(dayStart.getTime() - 7 * 864e5) } }],
-      },
-      orderBy: [{ nextActionAt: "asc" }, { lastContactedAt: "asc" }],
-      take: 5,
-      include: { assignedTo: { select: { name: true, email: true } } },
-    }),
-    prisma.activity.findMany({
-      where: { ...activityScope, createdAt: { gte: dayStart, lte: dayEnd } },
-      orderBy: { createdAt: "desc" },
-      take: 6,
-      include: {
-        salon: { select: { id: true, name: true, status: true } },
-        user: { select: { name: true, email: true } },
-      },
-    }),
+    prisma.activity.count({ where: { ...(ownerId ? { userId: ownerId } : {}), createdAt: { gte: startOfDay(today), lte: endOfDay(today) } } }),
   ]);
-
-  const typeCounts = Object.fromEntries(typeRows.flatMap((r) => (r.type ? [[r.type, r._count._all]] : [])));
-  const statusCounts = Object.fromEntries(statusRows.map((r) => [r.status, r._count._all]));
-  const actionsDue = visitPriorities.length + dueReminders.length + staleFollowups.length;
-
+  const typeCounts = Object.fromEntries(typeRows.flatMap(r => r.type ? [[r.type, r._count._all]] : []));
   return {
     totalSalons,
-    typeCounts: Object.fromEntries(TYPE_ORDER.map((type) => [type, typeCounts[type] ?? 0])) as Record<SalonType, number>,
-    statusCounts,
-    visitsThisWeek,
+    typeCounts: Object.fromEntries(TYPE_ORDER.map(type => [type, typeCounts[type] ?? 0])) as Record<SalonType, number>,
+    statusCounts: Object.fromEntries(statusRows.map(r => [r.status, r._count._all])),
     doneToday,
-    actionsDue,
-    dailyPriorities,
-    visitPriorities,
-    dueReminders,
-    staleFollowups,
-    todaysActions,
-    funnel: FUNNEL_STATUSES.map((status) => ({ status, count: statusCounts[status] ?? 0 })),
   };
 }
