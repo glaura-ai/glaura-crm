@@ -87,7 +87,7 @@ it("uses the latest commitment choice in previews without granting ordinary mont
 
 describe("CRM demo flow", () => {
   const demoBody = { ...body, identityChannel: "sms", onboardingFlow: "demo" };
-  const calendar = "https://calendar.app.google/fKZ83vMJn57BFw5e7";
+  const calendar = "https://calendar.google.com/calendar/appointments/schedules/AcZssZ2GpRA5TYUvak8XW2qGMjUyrlkjKPi-q-dAzjVVF2EVjLzgmcnFnNNo9WoT1sfH19KGQNHaQ5XF";
   const emailCreate = vi.fn();
   const demoPrisma = () => ({ emailJob: { findFirst: vi.fn().mockResolvedValue(null), create: emailCreate }, emailTemplate: { findFirst: vi.fn().mockResolvedValue(null) } });
   const demoInput = { jobId: "job", salonId: "salon", uid: "uid", email: "a@studio.fr", phone: "+33612345678", salonName: "Studio", serviceCount: 2, onboardingFlow: "demo" as const };

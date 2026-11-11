@@ -10,7 +10,7 @@ export type { ProPlanCode } from "./pro-plan";
 
 export const PRO_PREVIEW_READY_TEMPLATE_KEY = "PRO_PREVIEW_READY";
 export const PRO_PREVIEW_DEMO_TEMPLATE_KEY = "PRO_PREVIEW_DEMO";
-export const DEFAULT_PRO_SALES_CALENDAR_URL = "https://calendar.app.google/fKZ83vMJn57BFw5e7";
+export const DEFAULT_PRO_SALES_CALENDAR_URL = "https://calendar.google.com/calendar/appointments/schedules/AcZssZ2GpRA5TYUvak8XW2qGMjUyrlkjKPi-q-dAzjVVF2EVjLzgmcnFnNNo9WoT1sfH19KGQNHaQ5XF";
 
 export type ProPreviewFlow = "standard" | "demo";
 
