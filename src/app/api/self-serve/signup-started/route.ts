@@ -32,6 +32,7 @@ const BodySchema = z.object({
   phone: z.string().trim().optional(),
   instagramHandle: z.string().trim().max(500).optional().transform(normalizeInstagramHandle),
   planCode: proPlanCodeSchema.optional(),
+  onboardingFlow: z.literal("demo").optional(),
 });
 
 export async function POST(req: NextRequest) {

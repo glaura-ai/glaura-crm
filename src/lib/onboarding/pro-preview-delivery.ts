@@ -6,6 +6,7 @@ import {
   buildProPreviewUrl,
   hashProPreviewToken,
   loadProPreviewTemplate,
+  proSalesCalendarUrl,
   PRO_PREVIEW_FALLBACK_HERO_IMAGE,
   proPreviewToken,
   renderProPreviewEmail,
@@ -28,8 +29,11 @@ export async function prepareAndNotifyProPreview(input: {
   serviceCount: number;
   instagramHandle?: string | null;
   services?: readonly ProPreviewService[];
-  planCode: ProPlanCode;
-  trialPeriodDays: number;
+  /** Absent in the demo flow: no plan is chosen before the sales demo. */
+  planCode?: ProPlanCode;
+  trialPeriodDays?: number;
+  /** "demo": no plan, no checkout offer; the salon books a demo instead. */
+  onboardingFlow?: "demo" | null;
   publicBaseUrl?: "https://glaura.ai" | "https://staging-1.glaura.ai";
 }) {
   const secret = process.env.PRO_PREVIEW_TOKEN_SECRET ?? "";
@@ -50,9 +54,10 @@ export async function prepareAndNotifyProPreview(input: {
   // A user can restart the form and change plan while the first CRM job is
   // already running. The provisional profile is the latest server-authored
   // choice, so it wins over the queued job snapshot.
+  const isDemo = input.onboardingFlow === "demo";
   const profilePlanCode = profile.get("proPlanCode");
-  const planCode = queuedProPlan(profilePlanCode || input.planCode);
-  const trialPeriodDays = proPlanTrialDays(planCode);
+  const planCode = isDemo ? null : queuedProPlan(profilePlanCode || input.planCode);
+  const trialPeriodDays = planCode ? proPlanTrialDays(planCode) : null;
   const profileImg = profile.get("profileImg");
   const salonImages = profile.get("salon_images");
   const heroImageUrl = typeof profileImg === "string" && profileImg.trim()
@@ -67,8 +72,9 @@ export async function prepareAndNotifyProPreview(input: {
   const existing = await activationRef.get();
   const existingData = existing.data() ?? {};
   const now = Date.now();
-  const status = typeof existingData.status === "string" ?
-    existingData.status : "preview_ready";
+  const status = isDemo && existingData.status !== "activated" ?
+    "demo_pending" :
+    typeof existingData.status === "string" ? existingData.status : "preview_ready";
 
   await activationRef.set({
     uid: input.uid,
@@ -89,12 +95,14 @@ export async function prepareAndNotifyProPreview(input: {
 
   // The checkout function reads this server-authored offer. No browser can
   // choose a Stripe price, trial, discount or return target.
+  // Demo flow: no offer at all (and any stale one is removed), so Stripe
+  // checkout is impossible until the team assigns a plan after the demo.
   await profileRef.set({
     enable: false,
     isActive: false,
     available: false,
-    proOnboardingStatus: "preview_ready",
-    billingCheckoutOffer: {
+    proOnboardingStatus: isDemo ? "demo_pending" : "preview_ready",
+    billingCheckoutOffer: isDemo ? FieldValue.delete() : {
       planCode,
       trialPeriodDays,
       successUrl,
@@ -102,6 +110,7 @@ export async function prepareAndNotifyProPreview(input: {
     },
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
+  const calendarUrl = isDemo ? proSalesCalendarUrl() : null;
 
   const templateKey = `pro_preview:${input.jobId}`;
   const existingEmail = await input.prisma.emailJob.findFirst({
@@ -110,7 +119,7 @@ export async function prepareAndNotifyProPreview(input: {
   });
   let emailQueued = Boolean(existingEmail);
   if (!existingEmail && input.email.trim()) {
-    const template = await loadProPreviewTemplate(input.prisma);
+    const template = await loadProPreviewTemplate(input.prisma, isDemo ? "demo" : "standard");
     const email = renderProPreviewEmail({
       previewUrl,
       salonName: input.salonName,
@@ -119,6 +128,7 @@ export async function prepareAndNotifyProPreview(input: {
       heroImageUrl: emailHeroImageUrl,
       address: typeof profileAddress === "string" ? profileAddress : null,
       services: input.services,
+      demoCalendarUrl: calendarUrl,
     }, template);
     await input.prisma.emailJob.create({
       data: {
@@ -140,7 +150,7 @@ export async function prepareAndNotifyProPreview(input: {
 
   let smsSent = Boolean(existingData.previewSmsSentAtMs);
   if (!smsSent && input.phone.trim()) {
-    smsSent = await sendPreviewSms(input.phone, input.salonName, previewUrl);
+    smsSent = await sendPreviewSms(input.phone, input.salonName, previewUrl, calendarUrl);
     if (smsSent) {
       await activationRef.set({ previewSmsSentAtMs: Date.now() }, { merge: true });
     }
@@ -163,7 +173,12 @@ async function emailSafeHeroImageSource(source: string | null): Promise<string> 
   }
 }
 
-async function sendPreviewSms(phone: string, salonName: string, previewUrl: string): Promise<boolean> {
+async function sendPreviewSms(
+  phone: string,
+  salonName: string,
+  previewUrl: string,
+  calendarUrl: string | null,
+): Promise<boolean> {
   const endpoint = process.env.GLAURA_SMS_SEND_URL?.trim();
   if (!endpoint) return false;
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -173,7 +188,9 @@ async function sendPreviewSms(phone: string, salonName: string, previewUrl: stri
         headers: smsRelayHeaders(),
         body: JSON.stringify({
           To: phone.trim(),
-          Body: `La page Glaura de ${salonName} est prête : ${previewUrl}`,
+          Body: calendarUrl
+            ? `La page Glaura de ${salonName} est prête : ${previewUrl}. Réservez votre démo : ${calendarUrl}`
+            : `La page Glaura de ${salonName} est prête : ${previewUrl}`,
         }),
         cache: "no-store",
         signal: AbortSignal.timeout(10_000),

@@ -1,10 +1,10 @@
 /**
- * Flags self-serve signups that never came back from the Instagram gate.
+ * Flags self-serve signups that never finished the verification step.
  *
  * A `signup_started` row still untouched after the grace window becomes
  * `signup_stuck`, gets `nextActionAt` now (dashboard "priorités"), a due
  * reminder, and a timeline note — so a rep calls the salon instead of the
- * signup silently dying inside Meta's flow. A retry through
+ * signup silently dying mid-form. A retry through
  * /api/self-serve/signup-started resets the label and re-arms the sweep.
  */
 
@@ -41,7 +41,7 @@ export async function sweepStuckSignups(
       await tx.reminder.create({
         data: {
           salonId: salon.id,
-          title: "Inscription self-serve bloquée à l'étape Instagram — rappeler le salon",
+          title: "Inscription self-serve bloquée avant la fin — rappeler le salon",
           dueAt: now,
         },
       });
@@ -49,8 +49,8 @@ export async function sweepStuckSignups(
         data: {
           salonId: salon.id,
           type: "NOTE",
-          notes: "Inscription self-serve bloquée : la vérification Instagram n'a pas abouti " +
-            "dans les 30 minutes (compte non professionnel ou connexion abandonnée).",
+          notes: "Inscription self-serve bloquée : la vérification n'a pas abouti " +
+            "dans les 30 minutes (formulaire ou code SMS abandonné).",
         },
       });
       return true;

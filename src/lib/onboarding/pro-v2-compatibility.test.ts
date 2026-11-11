@@ -15,6 +15,7 @@ import { POST as signupStarted } from "@/app/api/self-serve/signup-started/route
 import { proPreviewJobContract } from "./pro-plan";
 import { subscriptionMatchesActivation } from "./pro-preview";
 import { prepareAndNotifyProPreview } from "./pro-preview-delivery";
+import { FieldValue } from "firebase-admin/firestore";
 
 const body = { targetUid: "uid", email: "a@studio.fr", salonName: "Studio", bookingUrl: "https://www.planity.com/studio", activationPreview: true };
 const request = (payload: unknown) => new NextRequest("https://crm.glaura.ai/api/self-serve/onboard", { method: "POST", headers: { authorization: "Bearer test-secret", "content-type": "application/json" }, body: JSON.stringify(payload) });
@@ -82,4 +83,58 @@ it("uses the latest commitment choice in previews without granting ordinary mont
   expect(activationSet).toHaveBeenCalledWith(expect.objectContaining({ planCode: "salon_v2_commitment", trialPeriodDays: 0 }), { merge: true });
   expect(profileSet).toHaveBeenCalledWith(expect.objectContaining({ billingCheckoutOffer: expect.objectContaining({ planCode: "salon_v2_commitment", trialPeriodDays: 0 }) }), { merge: true });
   expect(subscriptionMatchesActivation({ stripeSubscriptionId: "sub", stripeSubscriptionStatus: "active", stripeSubscriptionIsLive: true, stripeSubscriptionPlanCode: "salon_v2" }, "salon_v2_commitment")).toBe(false);
+});
+
+describe("CRM demo flow", () => {
+  const demoBody = { ...body, identityChannel: "sms", onboardingFlow: "demo" };
+  const calendar = "https://calendar.app.google/fKZ83vMJn57BFw5e7";
+  const emailCreate = vi.fn();
+  const demoPrisma = () => ({ emailJob: { findFirst: vi.fn().mockResolvedValue(null), create: emailCreate }, emailTemplate: { findFirst: vi.fn().mockResolvedValue(null) } });
+  const demoInput = { jobId: "job", salonId: "salon", uid: "uid", email: "a@studio.fr", phone: "+33612345678", salonName: "Studio", serviceCount: 2, onboardingFlow: "demo" as const };
+
+  it("accepts a demo signup without plan or trial and stores the flag in the job", async () => {
+    expect((await onboard(request(demoBody))).status).toBe(202);
+    const data = prisma.onboardingJob.create.mock.calls[0][0].data;
+    expect(data.config).toMatchObject({ onboardingFlow: "demo", activationPreview: true, enable: false });
+    expect(data.config.planCode).toBeUndefined();
+  });
+  it("still requires a plan outside the demo flow and keeps demo preview-only", async () => {
+    expect((await onboard(request({ ...body, identityChannel: "sms" }))).status).toBe(400);
+    expect((await onboard(request({ ...demoBody, activationPreview: false }))).status).toBe(400);
+    expect((await onboard(request({ ...demoBody, targetUid: undefined }))).status).toBe(400);
+  });
+  it("writes demo_pending with no plan and never a checkout offer", async () => {
+    profile.proPlanCode = "solo_v2";
+    await prepareAndNotifyProPreview({ prisma: demoPrisma() as never, ...demoInput });
+    expect(activationSet).toHaveBeenCalledWith(expect.objectContaining({ planCode: null, trialPeriodDays: null, status: "demo_pending" }), { merge: true });
+    const [profileData] = profileSet.mock.calls[0];
+    expect(profileData).toMatchObject({ enable: false, isActive: false, available: false, proOnboardingStatus: "demo_pending" });
+    expect(profileData.billingCheckoutOffer).toEqual(FieldValue.delete());
+  });
+  it("queues the demo email with the calendar CTA and no subscription wording", async () => {
+    vi.stubEnv("GLAURA_PRO_SALES_CALENDAR_URL", "");
+    await prepareAndNotifyProPreview({ prisma: demoPrisma() as never, ...demoInput });
+    const data = emailCreate.mock.calls[0][0].data;
+    expect(data.subject).toBe("Studio — votre page Glaura est prête");
+    for (const part of [data.body, data.bodyText]) {
+      expect(part).toContain(calendar);
+      expect(part).toContain("https://glaura.ai/pro/preview/");
+      expect(part).not.toMatch(/abonnement|essai|engagement|€\s*\/|par mois/i);
+    }
+    expect(data.body).toContain("Réserver ma démo");
+    expect(data.body).toContain("Voir ma page");
+  });
+  it("sends the demo SMS with preview and calendar links", async () => {
+    vi.stubEnv("GLAURA_SMS_SEND_URL", "https://sms.test/send");
+    vi.stubEnv("GLAURA_PRO_SALES_CALENDAR_URL", "https://cal.test/demo");
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await prepareAndNotifyProPreview({ prisma: demoPrisma() as never, ...demoInput });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    const sms = JSON.parse(fetchMock.mock.calls[0][1].body).Body as string;
+    expect(sms).toMatch(/^La page Glaura de Studio est prête : https:\/\/glaura\.ai\/pro\/preview\/\S+\. Réservez votre démo : https:\/\/cal\.test\/demo$/);
+  });
 });

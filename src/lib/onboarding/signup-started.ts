@@ -26,6 +26,7 @@ export type SignupStartedInput = {
   /** Already-normalized bare handle (the route normalizes). */
   instagramHandle?: string | null;
   planCode?: ProPlanCode;
+  onboardingFlow?: "demo";
 };
 
 /** Labels a fresh signup may overwrite. `import_failed` is included so a salon
@@ -105,7 +106,7 @@ export async function registerSignupStarted(
     data: {
       salonId: salon.id,
       type: "NOTE",
-      notes: "Inscription self-serve démarrée — en attente de la vérification Instagram." +
+      notes: "Inscription self-serve démarrée — en attente de la vérification du téléphone." +
         (input.planCode ? ` Plan choisi : ${input.planCode}.` : ""),
     },
   });

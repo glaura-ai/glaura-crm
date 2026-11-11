@@ -63,6 +63,16 @@ describe("stuck self-serve signup sweep", () => {
     }));
   });
 
+  it("keeps Instagram out of the reminder and note wording", async () => {
+    const { prisma, reminderCreate, activityCreate } =
+      fakePrisma({ stuck: [{ id: "salon-1", name: "Pour La Beauté" }] });
+
+    await sweepStuckSignups(prisma, new Date("2026-08-24T12:00:00Z"));
+
+    expect(reminderCreate.mock.calls[0][0].data.title).not.toMatch(/instagram/i);
+    expect(activityCreate.mock.calls[0][0].data.notes).not.toMatch(/instagram/i);
+  });
+
   it("backs off when the salon progressed between scan and claim", async () => {
     const now = new Date("2026-08-24T12:00:00Z");
     const { prisma, reminderCreate, activityCreate } =

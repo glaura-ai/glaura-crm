@@ -51,6 +51,8 @@ type Pipeline = {
   isProIdentityTestBypassAllowed: typeof import("../src/lib/onboarding/pro-identity").isProIdentityTestBypassAllowed;
   holdProProfileForIdentityReview: typeof import("../src/lib/onboarding/pro-identity-review").holdProProfileForIdentityReview;
   claimProBookingUrl: typeof import("../src/lib/onboarding/pro-booking-claim").claimProBookingUrl;
+  markDemoToBook: typeof import("../src/lib/onboarding/demo-flow").markDemoToBook;
+  flagDemoForHumanCall: typeof import("../src/lib/onboarding/demo-flow").flagDemoForHumanCall;
 };
 
 // --- event helpers ---------------------------------------------------------
@@ -278,6 +280,7 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
     // Per-job `config` (JSON column) carries P6 overrides — login creds, enable
     // flag, mode, deposit, agent/review targets. Absent → legacy disabled behavior.
     const overrides = (job.config ?? undefined) as OnboardingOverrides | undefined;
+    const isDemoFlow = overrides?.onboardingFlow === "demo";
 
     // 0. Fast-fail create-mode email collisions BEFORE the expensive scrape/LLM.
     // Enrich mode reuses an existing account, so it never collides here.
@@ -421,6 +424,13 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
           subtype: "review_required",
           data: { exitCode: 0, reason: "identity_review_required" },
         });
+        if (isDemoFlow) {
+          await pipeline.flagDemoForHumanCall(prisma, {
+            salonId: job.salonId,
+            salonName: extract.salon.name || job.salon.name,
+            reason: "conflit de lien de réservation",
+          }).catch((demoError) => console.error(`failed to flag demo for salon ${job.salonId}:`, demoError));
+        }
         console.log(`onboarded ${job.id} (${sourceUrl}): identity review required`);
         return;
       }
@@ -478,7 +488,7 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
             price: service.service_price,
             durationMinutes: service.duration_minutes,
           })),
-          ...proPreviewJobContract(overrides),
+          ...(isDemoFlow ? { onboardingFlow: "demo" as const } : proPreviewJobContract(overrides)),
           publicBaseUrl: overrides.publicBaseUrl ?? undefined,
         });
         await emit("system", {
@@ -486,6 +496,10 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
           text: `aperçu prêt; email ${preview.emailQueued ? "en file" : "absent"}, SMS ${preview.smsSent ? "envoyé" : "non envoyé"}`,
           data: { emailQueued: preview.emailQueued, smsSent: preview.smsSent },
         });
+        if (isDemoFlow) {
+          await pipeline.markDemoToBook(prisma, { salonId: job.salonId, salonName: previewSalonName })
+            .catch((demoError) => console.error(`failed to flag demo for salon ${job.salonId}:`, demoError));
+        }
       } catch (error) {
         await emit("stderr", {
           type: "preview_notification_failed",
@@ -521,6 +535,13 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
       where: { id: job.salonId },
       data: { accountStatusLabel: "import_failed" },
     }).catch((labelError) => console.error(`failed to label salon ${job.salonId}:`, labelError));
+    if ((job.config as OnboardingOverrides | null)?.onboardingFlow === "demo") {
+      await pipeline.flagDemoForHumanCall(prisma, {
+        salonId: job.salonId,
+        salonName: job.salon.name,
+        reason: "import échoué",
+      }).catch((demoError) => console.error(`failed to flag demo for salon ${job.salonId}:`, demoError));
+    }
     console.error(`failed ${job.id} (${sourceUrl}): ${message}`);
   }
 }
@@ -566,7 +587,7 @@ async function sleep(ms: number) {
 
 async function main() {
   const { prisma } = await import("../src/lib/db");
-  const [{ expandSalonPage }, { extractSalon }, createAccountMod, { encrypt }, { onboardSalonReels }, previewMod, identityMod, identityReviewMod, bookingClaimMod] =
+  const [{ expandSalonPage }, { extractSalon }, createAccountMod, { encrypt }, { onboardSalonReels }, previewMod, identityMod, identityReviewMod, bookingClaimMod, demoFlowMod] =
     await Promise.all([
       import("../src/lib/onboarding/expand"),
       import("../src/lib/onboarding/extract"),
@@ -577,6 +598,7 @@ async function main() {
       import("../src/lib/onboarding/pro-identity"),
       import("../src/lib/onboarding/pro-identity-review"),
       import("../src/lib/onboarding/pro-booking-claim"),
+      import("../src/lib/onboarding/demo-flow"),
     ]);
   const pipeline: Pipeline = {
     expandSalonPage,
@@ -591,6 +613,8 @@ async function main() {
     isProIdentityTestBypassAllowed: identityMod.isProIdentityTestBypassAllowed,
     holdProProfileForIdentityReview: identityReviewMod.holdProProfileForIdentityReview,
     claimProBookingUrl: bookingClaimMod.claimProBookingUrl,
+    markDemoToBook: demoFlowMod.markDemoToBook,
+    flagDemoForHumanCall: demoFlowMod.flagDemoForHumanCall,
   };
 
   if (!loop) {

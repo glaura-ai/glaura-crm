@@ -506,8 +506,9 @@ export async function triggerOnboarding(salonId: string) {
 /**
  * Human identity validation for a review-held self-serve signup.
  *
- * SMS-channel signups (and weak Instagram name matches) stop at
- * REVIEW_REQUIRED before any preview exists. Approving re-queues the SAME job
+ * Weak Instagram name matches and booking-link claim conflicts (SMS signups
+ * only hit the latter) stop at REVIEW_REQUIRED before any preview exists.
+ * Approving re-queues the SAME job
  * with `identityApproved` so the worker re-runs the full pipeline treating
  * identity as settled — the booking-claim conflict check still applies.
  */

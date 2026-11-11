@@ -88,8 +88,10 @@ export const PROSPECT_SOURCE_STYLE: Record<ProspectSource, string> = {
 // the salon card. Other labels (self_serve, pro_preview, …) stay detail-only.
 export const ACCOUNT_ATTENTION_LABEL: Record<string, string> = {
   signup_started: "Inscription en cours",
-  signup_stuck: "Bloqué : vérif Instagram",
+  signup_stuck: "Bloqué : inscription",
   oauth_cancelled: "Bloqué : vérif Instagram",
+  demo_to_book: "Démo à réserver",
+  demo_booked: "Démo réservée",
   identity_review: "Vérif identité requise",
   duplicate_email: "Échec : email déjà utilisé",
   import_failed: "Échec import",
@@ -99,6 +101,8 @@ export const ACCOUNT_ATTENTION_STYLE: Record<string, string> = {
   signup_started: "bg-sky-100 text-sky-700",
   signup_stuck: "bg-amber-100 text-amber-800",
   oauth_cancelled: "bg-amber-100 text-amber-800",
+  demo_to_book: "bg-rose-100 text-rose-700",
+  demo_booked: "bg-emerald-100 text-emerald-700",
   identity_review: "bg-amber-100 text-amber-800",
   duplicate_email: "bg-red-100 text-red-700",
   import_failed: "bg-red-100 text-red-700",

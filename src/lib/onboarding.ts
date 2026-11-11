@@ -79,6 +79,8 @@ export type OnboardingOverrides = {
   activationPreview?: boolean | null;
   planCode?: ProPlanCode | null;
   trialPeriodDays?: number | null;
+  /** "demo": the salon books a sales demo instead of picking a plan. */
+  onboardingFlow?: "demo" | null;
   /** Public website origin captured by the portal before OAuth. */
   publicBaseUrl?: "https://glaura.ai" | "https://staging-1.glaura.ai" | null;
   /** Meta-returned fields for the Instagram account that completed OAuth. The
@@ -87,7 +89,8 @@ export type OnboardingOverrides = {
   verifiedInstagramDisplayName?: string | null;
   /** How the salon proved its identity. "instagram" (default) means Business
    * Login OAuth — ownership is proven. "sms" means only the phone was
-   * verified: the worker always holds these for human identity review. */
+   * verified: name similarity is not gated on (they pass identity), only the
+   * booking-link claim conflict can still hold them for review. */
   identityChannel?: "instagram" | "sms" | null;
   /** Set by the CRM approve action when a human validated a review-held
    * signup; the re-queued job then treats identity as verified. */

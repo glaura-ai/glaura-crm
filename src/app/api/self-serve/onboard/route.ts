@@ -54,10 +54,13 @@ const BodySchema = z.object({
   /** Curated 5★ reviews to seed. Self-serve default is 0 (real reviews only). */
   reviewTarget: z.number().int().min(0).max(500).optional(),
   activationPreview: z.boolean().optional().default(false),
-  /** "sms" = phone-verified only (no Instagram ownership proof) → the worker
-   * always holds the preview for human identity review. Default: instagram. */
+  /** "sms" = phone-verified only (no Instagram ownership proof). Name
+   * similarity is not gated on; only a booking-link claim conflict holds the
+   * preview for human review. Default: instagram. */
   identityChannel: z.enum(["instagram", "sms"]).optional(),
   planCode: proPlanCodeSchema.optional(),
+  /** "demo": no plan or trial; the salon books a sales demo after the preview. */
+  onboardingFlow: z.literal("demo").optional(),
   trialPeriodDays: z.number().int().min(0).max(30).optional(),
   /** Origin is selected by the trusted portal environment before OAuth. Keep
    * the allowlist explicit so notification links can never become an open
@@ -70,7 +73,11 @@ const BodySchema = z.object({
   if (body.planCode && proPlanTrialDays(body.planCode) > 0 && body.trialPeriodDays === 0) {
     context.addIssue({ code: "custom", message: "Legacy trial must remain positive", path: ["trialPeriodDays"] });
   }
-  if (body.activationPreview && (!body.targetUid || !body.planCode || body.trialPeriodDays === undefined)) {
+  const demo = body.onboardingFlow === "demo";
+  if (demo && (!body.targetUid || !body.activationPreview)) {
+    context.addIssue({ code: "custom", message: "demo flow requires targetUid and activationPreview", path: ["onboardingFlow"] });
+  }
+  if (!demo && body.activationPreview && (!body.targetUid || !body.planCode || body.trialPeriodDays === undefined)) {
     context.addIssue({
       code: "custom",
       message: "activationPreview requires targetUid, planCode and trialPeriodDays",
@@ -134,6 +141,7 @@ export async function POST(req: NextRequest) {
         identityChannel: body.identityChannel ?? "instagram",
         planCode: body.planCode,
         trialPeriodDays: body.trialPeriodDays,
+        onboardingFlow: body.onboardingFlow,
         publicBaseUrl: body.publicBaseUrl,
         verifiedInstagramHandle: body.instagramHandle,
         verifiedInstagramDisplayName: body.instagramDisplayName,

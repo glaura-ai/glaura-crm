@@ -9,6 +9,15 @@ import type { ProPlanCode } from "./pro-plan";
 export type { ProPlanCode } from "./pro-plan";
 
 export const PRO_PREVIEW_READY_TEMPLATE_KEY = "PRO_PREVIEW_READY";
+export const PRO_PREVIEW_DEMO_TEMPLATE_KEY = "PRO_PREVIEW_DEMO";
+export const DEFAULT_PRO_SALES_CALENDAR_URL = "https://calendar.app.google/fKZ83vMJn57BFw5e7";
+
+export type ProPreviewFlow = "standard" | "demo";
+
+/** Sales calendar the salon books its demo on (same link as the website). */
+export function proSalesCalendarUrl(): string {
+  return process.env.GLAURA_PRO_SALES_CALENDAR_URL?.trim() || DEFAULT_PRO_SALES_CALENDAR_URL;
+}
 
 export type ProPreviewTemplate = {
   id?: string;
@@ -25,35 +34,40 @@ export type ProPreviewService = {
 
 export const PRO_PREVIEW_FALLBACK_HERO_IMAGE = "https://glaura.ai/images/pro/network-rouge-paris.webp";
 
-let previewTemplateBody: string | null = null;
+const previewTemplateBodies: Partial<Record<ProPreviewFlow, string>> = {};
+const TEMPLATE_FILES: Record<ProPreviewFlow, string> = {
+  standard: "./templates/pro-preview-ready.html",
+  demo: "./templates/pro-preview-demo.html",
+};
 
-export function bundledProPreviewTemplate(): ProPreviewTemplate {
-  if (previewTemplateBody == null) {
-    previewTemplateBody = readFileSync(
-      fileURLToPath(new URL("./templates/pro-preview-ready.html", import.meta.url)),
-      "utf8",
-    );
-  }
+export function bundledProPreviewTemplate(flow: ProPreviewFlow = "standard"): ProPreviewTemplate {
+  const body = previewTemplateBodies[flow] ??
+    readFileSync(fileURLToPath(new URL(TEMPLATE_FILES[flow], import.meta.url)), "utf8");
+  previewTemplateBodies[flow] = body;
   return {
     subject: "{{salon}} — votre page Glaura est prête",
-    body: previewTemplateBody,
+    body,
     source: "file",
   };
 }
 
 export async function loadProPreviewTemplate(
   prisma: Pick<PrismaClient, "emailTemplate">,
+  flow: ProPreviewFlow = "standard",
 ): Promise<ProPreviewTemplate> {
   try {
     const row = await prisma.emailTemplate.findFirst({
-      where: { key: PRO_PREVIEW_READY_TEMPLATE_KEY, archivedAt: null },
+      where: {
+        key: flow === "demo" ? PRO_PREVIEW_DEMO_TEMPLATE_KEY : PRO_PREVIEW_READY_TEMPLATE_KEY,
+        archivedAt: null,
+      },
       select: { id: true, subject: true, body: true },
     });
     if (row?.body.trim()) return { ...row, source: "database" };
   } catch {
     // A missing migration/database must never suppress the ready notification.
   }
-  return bundledProPreviewTemplate();
+  return bundledProPreviewTemplate(flow);
 }
 
 export function proPortalUrlForStripeMode(isLive: boolean): string {
@@ -84,13 +98,16 @@ export function renderProPreviewEmail(input: {
   heroImageUrl?: string | null;
   address?: string | null;
   services?: readonly ProPreviewService[];
-}, template: ProPreviewTemplate = bundledProPreviewTemplate()) {
+  /** Demo flow: the email invites the salon to book a demo instead of a plan. */
+  demoCalendarUrl?: string | null;
+}, template: ProPreviewTemplate = bundledProPreviewTemplate(input.demoCalendarUrl ? "demo" : "standard")) {
   const salon = input.salonName.trim() || "votre salon";
   const count = Math.max(0, Math.floor(input.serviceCount));
   const instagram = (input.instagramHandle ?? "").trim().replace(/^@+/, "");
   const services = previewServices(input.services);
   const values = {
     "{{lien_apercu}}": input.previewUrl,
+    "{{lien_demo}}": input.demoCalendarUrl?.trim() || proSalesCalendarUrl(),
     "{{nombre_prestations}}": String(count),
     "{{instagram_salon}}": instagram,
     "{{image_salon}}": safeHeroImageUrl(input.heroImageUrl),
@@ -107,12 +124,20 @@ export function renderProPreviewEmail(input: {
   };
   const salonDraft = { name: salon, contactName: null, bookingUrl: null };
   const subject = renderTemplate(template.subject, salonDraft, { format: "TEXT", values });
-  const text = [
-    `Bonjour,`,
-    `La page Glaura de ${salon} est prête avec ${count} prestations.`,
-    `Découvrez-la ici : ${input.previewUrl}`,
-    `Vous pourrez la vérifier avant de choisir votre abonnement et de la mettre en ligne.`,
-  ].join("\n\n");
+  const text = input.demoCalendarUrl
+    ? [
+        `Bonjour,`,
+        `La page Glaura de ${salon} est prête avec ${count} prestations.`,
+        `Voir ma page : ${input.previewUrl}`,
+        `Réserver ma démo : ${values["{{lien_demo}}"]}`,
+        `Pendant la démo, nous répondons à vos questions et mettons votre page en ligne.`,
+      ].join("\n\n")
+    : [
+        `Bonjour,`,
+        `La page Glaura de ${salon} est prête avec ${count} prestations.`,
+        `Découvrez-la ici : ${input.previewUrl}`,
+        `Vous pourrez la vérifier avant de choisir votre abonnement et de la mettre en ligne.`,
+      ].join("\n\n");
   const html = renderTemplate(template.body, salonDraft, { format: "HTML", values });
   return { subject, text, html };
 }
