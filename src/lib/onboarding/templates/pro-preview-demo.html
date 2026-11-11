@@ -1,156 +1,19 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Votre page Glaura est prête</title>
-  <style>
-    @media only screen and (max-width:620px) {
-      .shell { width:100% !important; }
-      .pad { padding-left:22px !important; padding-right:22px !important; }
-      .title { font-size:31px !important; line-height:37px !important; }
-      .profile-name { font-size:16px !important; }
-    }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Votre page Glaura est prête</title>
 </head>
-<body style="margin:0; padding:0; background:#FFFBF7; color:#1A2B4A;">
-  <div style="display:none; max-height:0; overflow:hidden; opacity:0;">Votre page est prête avec {{nombre_prestations}} prestations. Réservez votre démo pour la mettre en ligne.</div>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFFBF7;">
-    <tr>
-      <td align="center" style="padding:32px 12px 48px;">
-        <table role="presentation" class="shell" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px; max-width:600px; background:#FFFFFF; border:1px solid #F1EAE2; border-radius:22px;">
-          <tr>
-            <td class="pad" style="padding:32px 40px 10px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td valign="middle"><img src="cid:glaura-logo" width="92" height="49" alt="Glaura" style="display:block; width:92px; height:49px; border:0;"></td>
-                  <td align="right" valign="middle">
-                    <span style="display:inline-block; padding:8px 15px; border-radius:999px; background:#E9F8F1; color:#128B63; font-family:Arial,sans-serif; font-size:12px; font-weight:700; letter-spacing:.4px;">&#10003;&nbsp; APERÇU PRÊT</span>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-          <tr>
-            <td class="pad title" align="center" style="padding:24px 42px 0; font-family:Georgia,serif; font-size:40px; line-height:46px; font-weight:700; color:#1A2B4A;">Votre page Glaura<br>est prête</td>
-          </tr>
-          <tr>
-            <td class="pad" align="center" style="padding:18px 55px 0; font-family:Arial,sans-serif; font-size:16px; line-height:25px; color:#6A6560;">Nous avons préparé la page de <strong style="color:#1A2B4A;">{{salon}}</strong> avec {{nombre_prestations}} prestations. Parcourez-la, puis réservez une démo avec notre équipe : nous la mettons en ligne ensemble.</td>
-          </tr>
-
-          <tr>
-            <td class="pad" style="padding:30px 40px 8px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F4F3F3; border-radius:18px;">
-                <tr>
-                  <td align="center" style="padding:20px 14px 24px;">
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 10px;"><tr>
-                      <td style="padding:0 5px;"><div style="width:8px;height:8px;background:#E50050;border-radius:2px;"></div></td>
-                      <td style="padding:0 5px;"><div style="width:7px;height:7px;background:#FF7A6E;border-radius:50%;"></div></td>
-                      <td style="padding:0 5px;"><div style="width:8px;height:8px;background:#5C2751;border-radius:2px;"></div></td>
-                      <td style="padding:0 5px;"><div style="width:7px;height:7px;background:#FFC24B;border-radius:50%;"></div></td>
-                      <td style="padding:0 5px;"><div style="width:7px;height:7px;background:#128B63;border-radius:50%;"></div></td>
-                    </tr></table>
-
-                    <a href="{{lien_apercu}}" style="display:block; color:inherit; text-decoration:none;">
-                    <table role="presentation" width="470" cellpadding="0" cellspacing="0" border="0" style="width:470px; max-width:100%; background:#FFFFFF; border:1px solid #E6E3E3; border-radius:14px; box-shadow:0 12px 28px rgba(26,43,74,.12); overflow:hidden;">
-                      <tr>
-                        <td style="padding:10px 12px; border-bottom:1px solid #ECE9E9;">
-                          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-                            <td width="52"><span style="color:#FF7A6E;">●</span>&nbsp;<span style="color:#FFC24B;">●</span>&nbsp;<span style="color:#128B63;">●</span></td>
-                            <td><div style="background:#F5F3F4; border-radius:7px; padding:6px 10px; font-family:Arial,sans-serif; font-size:10px; color:#8E8490;"><strong style="color:#E50050;">glaura.ai</strong></div></td>
-                          </tr></table>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="padding:0; background:#25262A;">
-                          <img src="{{image_salon}}" width="470" height="170" alt="{{salon}}" style="display:block; width:100%; max-width:470px; height:170px; object-fit:cover; border:0;">
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="padding:13px 16px 12px; background:#25262A;">
-                          <div style="display:inline-block; padding:4px 9px; border-radius:99px; background:#D72A55; color:#FFFFFF; font-family:Arial,sans-serif; font-size:9px; font-weight:700; letter-spacing:.35px;">● APERÇU DE VOTRE PAGE</div>
-                          <div class="profile-name" style="padding-top:8px; font-family:Arial,sans-serif; font-size:19px; font-weight:800; line-height:23px; color:#FFFFFF;">{{salon}}</div>
-                          <div style="padding-top:4px; font-family:Arial,sans-serif; font-size:10px; line-height:15px; color:#DADADA;">{{adresse_salon}}</div>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="padding:0 15px; border-bottom:1px solid #ECE9E9;">
-                          <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-                            <td style="padding:12px 12px 9px 0; border-bottom:3px solid #D72A55; font-family:Arial,sans-serif; font-size:10px; font-weight:800; color:#D72A55;">Prestations</td>
-                            <td style="padding:12px 12px 9px; font-family:Arial,sans-serif; font-size:10px; font-weight:700; color:#77716F;">Salon</td>
-                          </tr></table>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="padding:15px 14px 8px; background:#F8F8F8;">
-                          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-                            <td valign="top" style="padding-right:9px;">
-                              <div style="font-family:Arial,sans-serif; font-size:12px; font-weight:800; color:#202A3F;">Les plus réservées</div>
-                              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:9px;"><tr>
-                                <td width="50%" valign="top" style="padding-right:4px;">
-                                  <div style="min-height:88px; padding:9px; background:#FFFFFF; border:1px solid #E5E2E2; border-radius:10px;">
-                                    <div style="display:inline-block; padding:3px 6px; border-radius:99px; background:#FCE9EF; color:#B71D4A; font-family:Arial,sans-serif; font-size:7px; font-weight:800;">★ RECOMMANDÉ</div>
-                                    <div style="padding-top:7px; font-family:Arial,sans-serif; font-size:10px; line-height:13px; font-weight:700; color:#202A3F;">{{prestation_1}}</div>
-                                    <div style="padding-top:4px; font-family:Arial,sans-serif; font-size:8px; color:#8A8580;">◷ {{duree_prestation_1}}</div>
-                                    <div style="padding-top:8px; font-family:Arial,sans-serif; font-size:11px; font-weight:800; color:#202A3F;">{{prix_prestation_1}}</div>
-                                  </div>
-                                </td>
-                                <td width="50%" valign="top" style="padding-left:4px;">
-                                  <div style="min-height:88px; padding:9px; background:#FFFFFF; border:1px solid #E5E2E2; border-radius:10px;">
-                                    <div style="display:inline-block; padding:3px 6px; border-radius:99px; background:#FCE9EF; color:#B71D4A; font-family:Arial,sans-serif; font-size:7px; font-weight:800;">★ RECOMMANDÉ</div>
-                                    <div style="padding-top:7px; font-family:Arial,sans-serif; font-size:10px; line-height:13px; font-weight:700; color:#202A3F;">{{prestation_2}}</div>
-                                    <div style="padding-top:4px; font-family:Arial,sans-serif; font-size:8px; color:#8A8580;">◷ {{duree_prestation_2}}</div>
-                                    <div style="padding-top:8px; font-family:Arial,sans-serif; font-size:11px; font-weight:800; color:#202A3F;">{{prix_prestation_2}}</div>
-                                  </div>
-                                </td>
-                              </tr></table>
-                            </td>
-                            <td width="124" valign="top">
-                              <div style="padding:10px; background:#FFFFFF; border:1px solid #E5E2E2; border-radius:10px;">
-                                <div style="font-family:Arial,sans-serif; font-size:9px; line-height:12px; font-weight:800; color:#202A3F;"><span style="color:#D72A55;">◷</span> Horaires d&#39;ouverture</div>
-                                <div style="padding-top:10px; height:5px; border-bottom:1px solid #ECE9E9;"></div>
-                                <div style="padding-top:8px; height:5px; border-bottom:1px solid #ECE9E9;"></div>
-                                <div style="padding-top:8px; height:5px; border-bottom:1px solid #ECE9E9;"></div>
-                                <div style="padding-top:8px; height:5px; border-bottom:1px solid #ECE9E9;"></div>
-                              </div>
-                            </td>
-                          </tr></table>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="padding:8px 14px 16px; background:#F8F8F8;">
-                          <div style="display:inline-block; padding:6px 10px; border-radius:99px; background:#D72A55; color:#FFFFFF; font-family:Arial,sans-serif; font-size:8px; font-weight:700;">À la une</div>
-                          <span style="display:inline-block; margin-left:5px; padding:5px 9px; border:1px solid #E0DCDC; border-radius:99px; color:#5E5754; font-family:Arial,sans-serif; font-size:8px;">{{prestation_3}}</span>
-                        </td>
-                      </tr>
-                    </table>
-                    </a>
-                    <div style="width:430px; max-width:92%; height:9px; background:#DAD6D6; border-radius:0 0 10px 10px; margin:0 auto;"></div>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <tr>
-            <td class="pad" align="center" style="padding:24px 40px 0;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="border-radius:999px; background:#E50050;">
-                <a href="{{lien_demo}}" style="display:block; padding:17px 28px; color:#FFFFFF; text-decoration:none; font-family:Arial,sans-serif; font-size:17px; font-weight:700;">Réserver ma démo</a>
-              </td></tr></table>
-            </td>
-          </tr>
-          <tr>
-            <td class="pad" align="center" style="padding:16px 40px 0;">
-              <a href="{{lien_apercu}}" style="color:#E50050; text-decoration:underline; font-family:Arial,sans-serif; font-size:15px; font-weight:700;">Voir ma page</a>
-            </td>
-          </tr>
-          <tr>
-            <td class="pad" align="center" style="padding:16px 52px 36px; font-family:Arial,sans-serif; font-size:13px; line-height:20px; color:#8A8380;">Le lien de l’aperçu est personnel. Pendant la démo, nous répondons à vos questions et mettons votre page en ligne.</td>
-          </tr>
-        </table>
-        <div style="padding-top:22px; font-family:Arial,sans-serif; font-size:12px; color:#A49BA3;">Glaura · La réservation beauté, simplement.</div>
-      </td>
-    </tr>
-  </table>
+<body style="margin:0;padding:0;background:#ffffff;">
+<div style="max-width:560px;padding:16px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#222222;">
+<p>Bonjour,</p>
+<p>Nous avons préparé la page Glaura de {{salon}} à partir de votre lien de réservation, avec {{nombre_prestations}} prestations.</p>
+<p>Voir ma page : <a href="{{lien_apercu}}" style="color:#1a56db;">{{lien_apercu}}</a></p>
+<p>Prochaine étape : une courte démo avec notre équipe. On vous montre la page, on répond à vos questions et on la met en ligne ensemble.</p>
+<p>Réserver ma démo : <a href="{{lien_demo}}" style="color:#1a56db;">choisir un créneau</a></p>
+<p>Le lien de l’aperçu est personnel. Vous pouvez simplement répondre à cet email si vous avez une question.</p>
+<p>À bientôt,<br>L’équipe Glaura</p>
+</div>
 </body>
 </html>
