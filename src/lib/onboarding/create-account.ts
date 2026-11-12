@@ -65,7 +65,6 @@ const EMAIL_DOMAIN = GLAURA_EMAIL_DOMAIN;
 const FUNCTIONS_BASE_URL =
   process.env.GLAURA_FUNCTIONS_BASE_URL?.trim() || "https://api.glaura.ai";
 const SERVICES_UPLOAD_URL = FUNCTIONS_BASE_URL;
-const CREATE_AGENT_URL = `${FUNCTIONS_BASE_URL}/createAgent`;
 const MAX_SUFFIX_ATTEMPTS = 500;
 
 /** Context the caller already has from earlier pipeline steps (P1/P2) that isn't part of `extract` or `hints`. */
@@ -335,23 +334,41 @@ async function applySubcategoryOrder(
 }
 
 /** POSTs each synthesized agent to the open `createAgent` Cloud Function. Returns the count created. */
+// Written with the admin SDK: the createAgent endpoint requires the owner's ID
+// token since 2026-10-04, which this headless pipeline does not have. Mirrors
+// the document that endpoint writes (functions/providers/createAgent.js).
 async function createAgents(agents: readonly AgentDoc[], warnings: string[]): Promise<number> {
+  const db = getDb();
   let created = 0;
-  for (const agent of agents) {
+  for (const [order, agent] of agents.entries()) {
     try {
-      const response = await fetch(CREATE_AGENT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(agent),
+      const profileRef = db.collection("userProfile").doc(agent.ownerId);
+      const agentRef = db.collection("agents").doc();
+      await db.runTransaction(async (tx) => {
+        if (!(await tx.get(profileRef)).exists) throw new Error("provider_not_found");
+        tx.set(agentRef, {
+          ...agent,
+          id: agentRef.id,
+          email: "",
+          password: "",
+          phoneNumber: "",
+          imageUrl: "",
+          isActive: true,
+          isDeleted: false,
+          breakTime: [],
+          createdAt: Timestamp.now(),
+          acuityBookingUrl: "",
+          planityBookingUrl: "",
+          serviceId: "",
+          loginStatus: false,
+          loginType: "email",
+          order,
+        });
+        tx.update(profileRef, { agentCapacityRevision: FieldValue.increment(1) });
       });
-      if (response.status === 201) {
-        created += 1;
-      } else {
-        const body = (await response.json().catch(() => null)) as { message?: string } | null;
-        warnings.push(`Agent "${agent.name}" not created (HTTP ${response.status}): ${body?.message ?? response.statusText}`);
-      }
+      created += 1;
     } catch (error) {
-      warnings.push(`Agent "${agent.name}" request failed: ${error instanceof Error ? error.message : String(error)}`);
+      warnings.push(`Agent "${agent.name}" not created: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   return created;

@@ -379,8 +379,10 @@ export function buildServicesPayload(extract: SalonExtract, ownerId: string): Se
     });
 
   const variantsByServiceName: Record<string, ServiceVariantPatch> = {};
+  const names = uniqueServiceNames(ordered.map(({ service }) => service));
 
-  const services: ServicePayloadItem[] = ordered.map(({ service }) => {
+  const services: ServicePayloadItem[] = ordered.map(({ service: source }, position) => {
+    const service = { ...source, service_name: names[position] };
     const options = service.options ?? [];
     if (options.length > 0) {
       const basePrice = service.service_price;
@@ -410,6 +412,29 @@ export function buildServicesPayload(extract: SalonExtract, ownerId: string): Se
   });
 
   return { payload: { ownerId, services }, variantsByServiceName };
+}
+
+/**
+ * The services uploader rejects a second service with the same name for an
+ * owner, but salon pages often repeat a name across sections (e.g. "Pose
+ * mixte" under Mains and Pieds). Repeats get their section appended, then a
+ * number if the section repeats too.
+ */
+export function uniqueServiceNames(
+  services: readonly { service_name: string; subcategory_name: string }[],
+): string[] {
+  const counts = new Map<string, number>();
+  for (const s of services) counts.set(normServiceKey(s.service_name), (counts.get(normServiceKey(s.service_name)) ?? 0) + 1);
+  const used = new Set<string>();
+  return services.map((s) => {
+    const base = s.service_name;
+    let name = (counts.get(normServiceKey(base)) ?? 0) > 1 && s.subcategory_name.trim()
+      ? `${base} – ${s.subcategory_name.trim()}`
+      : base;
+    for (let n = 2; used.has(normServiceKey(name)); n += 1) name = `${base} (${n})`;
+    used.add(normServiceKey(name));
+    return name;
+  });
 }
 
 /** Match key for a created service doc → its variant patch (by normalized name). */
