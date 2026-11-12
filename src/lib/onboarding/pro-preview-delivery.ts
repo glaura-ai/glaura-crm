@@ -188,8 +188,9 @@ async function sendPreviewSms(
         headers: smsRelayHeaders(),
         body: JSON.stringify({
           To: phone.trim(),
+          // Demo: one GSM-7 segment (no accents, no calendar link: the page has the CTA).
           Body: calendarUrl
-            ? `La page Glaura de ${salonName} est prête : ${previewUrl}. Réservez votre démo : ${calendarUrl}`
+            ? `Votre page Glaura pour ${salonName} vous attend : ${previewUrl}`
             : `La page Glaura de ${salonName} est prête : ${previewUrl}`,
         }),
         cache: "no-store",

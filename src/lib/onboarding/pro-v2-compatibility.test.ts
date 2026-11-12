@@ -124,7 +124,7 @@ describe("CRM demo flow", () => {
     expect(data.body).toContain("Réserver ma démo");
     expect(data.body).toContain("Voir ma page");
   });
-  it("sends the demo SMS with preview and calendar links", async () => {
+  it("sends a one-segment demo SMS with only the preview link", async () => {
     vi.stubEnv("GLAURA_SMS_SEND_URL", "https://sms.test/send");
     vi.stubEnv("GLAURA_PRO_SALES_CALENDAR_URL", "https://cal.test/demo");
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
@@ -135,6 +135,6 @@ describe("CRM demo flow", () => {
       vi.unstubAllGlobals();
     }
     const sms = JSON.parse(fetchMock.mock.calls[0][1].body).Body as string;
-    expect(sms).toMatch(/^La page Glaura de Studio est prête : https:\/\/glaura\.ai\/pro\/preview\/\S+\. Réservez votre démo : https:\/\/cal\.test\/demo$/);
+    expect(sms).toMatch(/^Votre page Glaura pour Studio vous attend : https:\/\/glaura\.ai\/pro\/preview\/\S+$/);
   });
 });
