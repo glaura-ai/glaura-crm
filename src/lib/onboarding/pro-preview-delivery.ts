@@ -14,7 +14,7 @@ import {
   type ProPreviewService,
 } from "@/lib/onboarding/pro-preview";
 import { privateMediaObjectPath, toInlineHeroDataUri } from "@/lib/onboarding/pro-preview-image";
-import { smsRelayHeaders } from "@/lib/backend-relay";
+import { smsRelayBody, smsRelayHeaders, smsRelayUrl } from "@/lib/backend-relay";
 
 const ACTIVATION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -150,7 +150,7 @@ export async function prepareAndNotifyProPreview(input: {
 
   let smsSent = Boolean(existingData.previewSmsSentAtMs);
   if (!smsSent && input.phone.trim()) {
-    smsSent = await sendPreviewSms(input.phone, input.salonName, previewUrl, calendarUrl);
+    smsSent = await sendPreviewSms(input.phone, input.salonName, previewUrl, calendarUrl, input.jobId);
     if (smsSent) {
       await activationRef.set({ previewSmsSentAtMs: Date.now() }, { merge: true });
     }
@@ -178,20 +178,22 @@ async function sendPreviewSms(
   salonName: string,
   previewUrl: string,
   calendarUrl: string | null,
+  jobId: string,
 ): Promise<boolean> {
-  const endpoint = process.env.GLAURA_SMS_SEND_URL?.trim();
-  if (!endpoint) return false;
+  const endpoint = smsRelayUrl();
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       const response = await fetch(endpoint, {
         method: "POST",
         headers: smsRelayHeaders(),
-        body: JSON.stringify({
-          To: phone.trim(),
+        body: smsRelayBody({
+          to: phone.trim(),
           // Demo: one GSM-7 segment (no accents, no calendar link: the page has the CTA).
-          Body: calendarUrl
+          body: calendarUrl
             ? `Votre page Glaura pour ${salonName} vous attend : ${previewUrl}`
             : `La page Glaura de ${salonName} est prête : ${previewUrl}`,
+          source: "crm_pro_preview",
+          idempotencyKey: `pro-preview-sms:${jobId}`,
         }),
         cache: "no-store",
         signal: AbortSignal.timeout(10_000),
