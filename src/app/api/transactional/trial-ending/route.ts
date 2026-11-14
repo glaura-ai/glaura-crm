@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
 
     // SMS is attempted only when the event created its email job. A Stripe
     // retry therefore cannot send the salon the same reminder twice.
-    const smsSent = input.phone ? await sendTrialEndingSms(input.phone, input.data) : false;
+    const smsSent = input.phone ? await sendTrialEndingSms(input.phone, input.data, input.eventId) : false;
     return NextResponse.json({ success: true, duplicate: false, jobId: job.id, smsSent });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

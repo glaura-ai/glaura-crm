@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { renderTemplate } from "@/lib/emailTemplates";
-import { smsRelayHeaders } from "@/lib/backend-relay";
+import { smsRelayBody, smsRelayHeaders, smsRelayUrl } from "@/lib/backend-relay";
 
 export const PRO_TRIAL_ENDING_TEMPLATE_KEY = "PRO_TRIAL_ENDING";
 
@@ -121,16 +121,25 @@ export function trialEndingSmsBody(data: TrialEndingData): string {
   return `Glaura : l'essai de ${data.salonName} se termine le ${trialEndDate}. Votre abonnement démarrera automatiquement. Gérez-le ici : ${data.billingUrl}`;
 }
 
-export async function sendTrialEndingSms(phone: string, data: TrialEndingData): Promise<boolean> {
-  const endpoint = process.env.GLAURA_SMS_SEND_URL?.trim();
-  if (!endpoint || !phone.trim()) return false;
+export async function sendTrialEndingSms(
+  phone: string,
+  data: TrialEndingData,
+  idempotencyKey?: string,
+): Promise<boolean> {
+  const endpoint = smsRelayUrl();
+  if (!phone.trim()) return false;
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       const response = await fetch(endpoint, {
         method: "POST",
         headers: smsRelayHeaders(),
-        body: JSON.stringify({ To: phone.trim(), Body: trialEndingSmsBody(data) }),
+        body: smsRelayBody({
+          to: phone.trim(),
+          body: trialEndingSmsBody(data),
+          source: "crm_trial_ending",
+          idempotencyKey,
+        }),
         cache: "no-store",
         signal: AbortSignal.timeout(10_000),
       });

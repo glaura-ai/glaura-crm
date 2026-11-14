@@ -134,7 +134,10 @@ describe("CRM demo flow", () => {
     } finally {
       vi.unstubAllGlobals();
     }
-    const sms = JSON.parse(fetchMock.mock.calls[0][1].body).Body as string;
+    const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(payload.source).toBe("crm_pro_preview");
+    expect(payload.idempotencyKey).toMatch(/^pro-preview-sms:/);
+    const sms = payload.Body as string;
     expect(sms).toMatch(/^Votre page Glaura pour Studio vous attend : https:\/\/glaura\.ai\/pro\/preview\/\S+$/);
   });
 });
