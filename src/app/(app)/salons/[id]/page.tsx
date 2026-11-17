@@ -15,6 +15,7 @@ import { isDailyPriorityActive } from "@/lib/dailyPriority";
 import { canRevealOnboardingPassword } from "@/lib/onboarding-access";
 import { fetchCompanyUserName, onboardingPreviewValues } from "@/lib/onboarding/salon-credentials";
 import { salonPageUrl } from "@/lib/onboarding/welcome-email";
+import { REELS_EVENT_TYPES, reelsStatus } from "@/lib/onboarding/reels/status";
 import {
   ACTIVITY_LABEL,
   BOOKING_LABEL,
@@ -93,6 +94,13 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
   // The public page renders even while the account is disabled — the team
   // previews it before the demo.
   const salonSlug = await fetchCompanyUserName(credentialJob?.accountUid ?? latestJob?.accountUid);
+  const reels = latestJob
+    ? reelsStatus(await prisma.onboardingJobEvent.findFirst({
+        where: { jobId: latestJob.id, type: { in: [...REELS_EVENT_TYPES] } },
+        orderBy: { sequence: "desc" },
+        select: { type: true, text: true, data: true },
+      }))
+    : null;
   const onboardingBusy = latestJob?.status === "QUEUED" || latestJob?.status === "PROCESSING";
   const canTrigger = !!me && hasBookingUrl && !onboardingBusy && (isAdmin || salon.assignedToId === me.id) && (isAdmin || salon.status === "SIGNE");
   const canRevealPassword = canRevealOnboardingPassword(me);
@@ -251,6 +259,16 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
                 {credentialJob && canRevealPassword && <OnboardingPasswordReveal jobId={credentialJob.id} />}
                 {latestJob.serviceCount != null && (
                   <div className="mt-1 text-xs font-medium text-slate-500">{latestJob.serviceCount} services · {latestJob.agentCount ?? 0} agents</div>
+                )}
+                {reels && (
+                  <div
+                    className={cn(
+                      "mt-1 text-xs font-medium",
+                      reels.tone === "ok" ? "text-slate-500" : reels.tone === "warn" ? "text-amber-700" : "text-rose-700",
+                    )}
+                  >
+                    {reels.text}
+                  </div>
                 )}
                 {salonSlug && (
                   <a
