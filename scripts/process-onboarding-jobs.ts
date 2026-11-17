@@ -21,6 +21,7 @@
  */
 
 import { proPreviewJobContract } from "../src/lib/onboarding/pro-plan";
+import { withSalonContactLogin } from "../src/lib/onboarding/contact-login";
 import { loadEnvConfig } from "@next/env";
 import type { PrismaClient } from "../src/generated/prisma/client";
 
@@ -279,7 +280,11 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
   try {
     // Per-job `config` (JSON column) carries P6 overrides — login creds, enable
     // flag, mode, deposit, agent/review targets. Absent → legacy disabled behavior.
-    const overrides = (job.config ?? undefined) as OnboardingOverrides | undefined;
+    const overrides = await withSalonContactLogin(
+      (job.config ?? undefined) as OnboardingOverrides | undefined,
+      job.salon.contactEmail,
+      pipeline.emailAlreadyRegistered,
+    );
     const isDemoFlow = overrides?.onboardingFlow === "demo";
 
     // 0. Fast-fail create-mode email collisions BEFORE the expensive scrape/LLM.
@@ -624,6 +629,7 @@ async function main() {
 
   await requeueOrphans(prisma);
   const { sweepStuckSignups } = await import("../src/lib/onboarding/signup-stuck-sweep");
+  const watchIgToken = await makeIgTokenWatch();
   console.log(`onboarding worker polling every ${pollMs / 1000}s`);
   while (true) {
     await processBatch(prisma, pipeline);
@@ -631,8 +637,38 @@ async function main() {
     // a sweep error must never take the job queue down with it.
     await sweepStuckSignups(prisma).catch((error) =>
       console.error("stuck-signup sweep failed:", error));
+    await watchIgToken();
     await sleep(pollMs);
   }
+}
+
+/**
+ * Daily check of the Instagram Graph token behind reels + prospection, so a
+ * dead token is an email instead of weeks of salons without videos.
+ */
+async function makeIgTokenWatch(): Promise<() => Promise<void>> {
+  if (process.env.ONBOARDING_REELS_ENABLED !== "true" && !process.env.IG_GRAPH_TOKEN) return async () => {};
+  const [{ checkIgGraphToken, createTokenWatch }, { igGraphConfig }, { sendEmail }] = await Promise.all([
+    import("../src/lib/onboarding/reels/token-watch"),
+    import("../src/lib/onboarding/reels/ig-reels"),
+    import("../src/lib/email"),
+  ]);
+  const to = process.env.OPS_ALERT_EMAIL?.trim() || process.env.CRM_ADMIN_EMAIL?.trim() || "admin@glaura.fr";
+  return createTokenWatch({
+    check: () => checkIgGraphToken(igGraphConfig()),
+    notify: async (reason) => {
+      console.error(`IG Graph token invalid: ${reason}`);
+      await sendEmail({
+        to,
+        subject: "[CRM] Token Instagram invalide — vidéos et prospection en panne",
+        text:
+          `Le token Instagram Graph (IG_GRAPH_TOKEN) ne fonctionne plus : ${reason}\n\n` +
+          "Les vidéos des salons préparés et l'enrichissement Instagram de la prospection sont en panne. " +
+          "Remplace IG_GRAPH_TOKEN dans /opt/glaura/glaura-crm/.env.docker (token System User de Meta Business Suite) " +
+          "puis recrée les workers.",
+      });
+    },
+  });
 }
 
 main()

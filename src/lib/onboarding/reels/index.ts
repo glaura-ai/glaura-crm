@@ -1,10 +1,13 @@
 import { sleep } from "@/lib/prospection/http";
-import { fetchTopReels, igGraphConfig, type Reel } from "@/lib/onboarding/reels/ig-reels";
+import { getDb } from "@/lib/firebase-admin";
+import { fetchRecentReels, igGraphConfig, type Reel } from "@/lib/onboarding/reels/ig-reels";
+import { selectServiceReels } from "@/lib/onboarding/reels/select";
 import { openReelResolver, verifyMp4Url, type Mp4Check, type ResolveMethod } from "@/lib/onboarding/reels/resolve";
 import { seedOnboardingVideos, type SeedReel, type SeedResult } from "@/lib/onboarding/reels/seed";
 
 // Orchestrates the cold-onboarding reel pipeline for one salon:
-//   Graph Business Discovery (most-liked, cookie-free)
+//   Graph Business Discovery (recent videos, cookie-free)
+//     → keep the newest reels whose caption shows a salon service (Haiku)
 //     → resolve each permalink to an MP4 URL (Playwright → saveinsta.to)
 //       → seedOnboardingVideos (R2 upload + auto service-detection).
 // Service detection lives in the Cloud Function, so nothing here maps captions
@@ -86,7 +89,9 @@ export async function onboardSalonReels(
         error: null,
       };
       try {
-        const { videoUrl, method } = await resolver.resolve(reel.permalink);
+        const { videoUrl, method } = reel.mediaUrl
+          ? { videoUrl: reel.mediaUrl, method: "graph" as const }
+          : await resolveWithRetry(resolver, reel.permalink);
         row.videoUrl = videoUrl;
         row.method = method;
         if (verify) {
@@ -136,6 +141,19 @@ export async function onboardSalonReels(
   return { handle, candidates: reels.length, resolved: seedReels.length, dryRun: false, rows, seed };
 }
 
+/** saveinsta times out now and then on a reel that resolves fine a moment later. */
+async function resolveWithRetry(
+  resolver: Awaited<ReturnType<typeof openReelResolver>>,
+  permalink: string,
+): Promise<{ videoUrl: string; method: ResolveMethod }> {
+  try {
+    return await resolver.resolve(permalink);
+  } catch {
+    await sleep(RESOLVE_SPACING_MS);
+    return resolver.resolve(permalink);
+  }
+}
+
 /** Build the reel list either from explicit permalinks or Business Discovery. */
 async function collectReels(
   opts: OnboardReelsOptions,
@@ -154,9 +172,23 @@ async function collectReels(
     throw new Error("IG_GRAPH_TOKEN / IG_GRAPH_USER_ID non définis — backend Graph requis (ou passe --permalinks).");
   }
   const handle = normalizeHandle(opts.handle);
-  const reels = await fetchTopReels(handle, limit, config);
-  log(`@${handle}: ${reels.length} reel(s) vidéo (top ${limit} par likes)`);
+  const recent = await fetchRecentReels(handle, config);
+  const services = opts.uid ? await fetchServiceNames(opts.uid) : [];
+  const reels = await selectServiceReels(recent, services, limit);
+  log(
+    services.length
+      ? `@${handle}: ${reels.length}/${recent.length} reel(s) vidéo montrent un service (${services.length} services)`
+      : `@${handle}: pas de services connus — ${reels.length} reel(s) les plus récents`,
+  );
   return { handle, reels };
+}
+
+/** The salon's service names, to judge which reels show a service. */
+async function fetchServiceNames(uid: string): Promise<string[]> {
+  const snap = await getDb().collection("services").where("ownerId", "==", uid).get();
+  return snap.docs
+    .map((doc) => doc.get("service_name"))
+    .filter((name): name is string => typeof name === "string" && name.trim().length > 0);
 }
 
 /** Accept "@salon", "salon", or a full instagram.com/<handle>/... URL. */
@@ -175,6 +207,7 @@ function reelFromPermalink(permalink: string): Reel {
     caption: "",
     permalink,
     thumbnailUrl: null,
+    mediaUrl: null,
     timestamp: null,
     likeCount: 0,
   };

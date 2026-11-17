@@ -57,6 +57,8 @@ export type OnboardingOverrides = {
   targetUid?: string | null;
   /** Firebase Auth email to use instead of the generated `<slug>@glaura.fr`. */
   loginEmail?: string | null;
+  /** false: never send the credentials welcome email for this job. */
+  sendWelcomeEmail?: boolean | null;
   /** Firebase Auth password to use instead of the random generated one. */
   loginPassword?: string | null;
   /** When true, the account is created LIVE (enable/isActive/available = true). */
