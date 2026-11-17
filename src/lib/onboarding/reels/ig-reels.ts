@@ -5,15 +5,14 @@ import { igGraphConfig, type IgGraphConfig } from "@/lib/prospection/ig-graph";
 // the prospection enrichment already uses), so it runs from the VPS.
 //
 // Limits worth knowing: the media edge is chronological and deep pagination is
-// broken, so we pull one page of the most recent media and sort it by
-// like_count — i.e. "the most-liked among recent posts", not the all-time top.
+// broken, so we pull one page of the most recent media.
 // `media_url` for a third-party account is unreliable/null, so we only keep the
 // `permalink` here; the actual MP4 URL is resolved later (see resolve.ts).
 
 const GRAPH_VERSION = "v21.0";
 
-// How many recent media items to pull before sorting by likes. One page only
-// (pagination is broken on this edge); 50 is plenty to find the top reels.
+// How many recent media items to pull. One page only (pagination is broken on
+// this edge); 50 covers months of posts for a typical salon.
 const MEDIA_PAGE_LIMIT = 50;
 
 // media_type values that carry a playable video.
@@ -44,14 +43,13 @@ type GraphMediaResponse = {
 };
 
 /**
- * Return a salon's video reels, most-liked first, from its most recent media.
+ * Return every video reel among a salon's most recent media (API order,
+ * newest first). Picking which ones to seed is select.ts's job.
  *
  * @param handle Bare Instagram username (no @, no URL).
- * @param limit  Max reels to return (caller caps at seed budget, e.g. 5).
  */
-export async function fetchTopReels(
+export async function fetchRecentReels(
   handle: string,
-  limit: number,
   config: IgGraphConfig,
 ): Promise<Reel[]> {
   const mediaFields = "id,caption,media_type,permalink,thumbnail_url,timestamp,like_count";
@@ -79,9 +77,7 @@ export async function fetchTopReels(
         timestamp: it.timestamp ?? null,
         likeCount: typeof it.like_count === "number" ? it.like_count : 0,
       }),
-    )
-    .sort((a, b) => b.likeCount - a.likeCount)
-    .slice(0, Math.max(1, limit));
+    );
 }
 
 export { igGraphConfig };
