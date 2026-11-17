@@ -6,10 +6,10 @@ import { igGraphConfig, type IgGraphConfig } from "@/lib/prospection/ig-graph";
 //
 // Limits worth knowing: the media edge is chronological and deep pagination is
 // broken, so we pull one page of the most recent media.
-// `media_url` for a third-party account is unreliable/null, so we only keep the
-// `permalink` here; the actual MP4 URL is resolved later (see resolve.ts).
+// `media_url` is withheld for reels with licensed music or downloads turned off;
+// when present it is used directly, otherwise the permalink is resolved (resolve.ts).
 
-const GRAPH_VERSION = "v21.0";
+const GRAPH_VERSION = "v25.0";
 
 // How many recent media items to pull. One page only (pagination is broken on
 // this edge); 50 covers months of posts for a typical salon.
@@ -23,6 +23,8 @@ export type Reel = {
   caption: string;
   permalink: string;
   thumbnailUrl: string | null;
+  /** Direct MP4 from the Graph API, when Meta exposes it. */
+  mediaUrl: string | null;
   timestamp: string | null;
   likeCount: number;
 };
@@ -33,6 +35,7 @@ type GraphMediaItem = {
   media_type?: string;
   permalink?: string;
   thumbnail_url?: string;
+  media_url?: string;
   timestamp?: string;
   like_count?: number;
 };
@@ -52,7 +55,7 @@ export async function fetchRecentReels(
   handle: string,
   config: IgGraphConfig,
 ): Promise<Reel[]> {
-  const mediaFields = "id,caption,media_type,permalink,thumbnail_url,timestamp,like_count";
+  const mediaFields = "id,caption,media_type,media_url,permalink,thumbnail_url,timestamp,like_count";
   const fields = `business_discovery.username(${handle}){media.limit(${MEDIA_PAGE_LIMIT}){${mediaFields}}}`;
   const url =
     `https://graph.facebook.com/${GRAPH_VERSION}/${config.userId}` +
@@ -74,6 +77,7 @@ export async function fetchRecentReels(
         caption: it.caption ?? "",
         permalink: it.permalink!,
         thumbnailUrl: it.thumbnail_url ?? null,
+        mediaUrl: it.media_url ?? null,
         timestamp: it.timestamp ?? null,
         likeCount: typeof it.like_count === "number" ? it.like_count : 0,
       }),

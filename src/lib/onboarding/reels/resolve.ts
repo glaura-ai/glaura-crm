@@ -27,7 +27,7 @@ const NAV_TIMEOUT_MS = 45_000;
 const INPUT_TIMEOUT_MS = 15_000;
 const RESULT_TIMEOUT_MS = 40_000;
 
-export type ResolveMethod = "saveinsta";
+export type ResolveMethod = "graph" | "saveinsta";
 export type ResolvedReel = { videoUrl: string; method: ResolveMethod };
 
 export class ReelResolveError extends Error {

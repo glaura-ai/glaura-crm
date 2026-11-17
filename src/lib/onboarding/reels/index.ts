@@ -89,7 +89,9 @@ export async function onboardSalonReels(
         error: null,
       };
       try {
-        const { videoUrl, method } = await resolver.resolve(reel.permalink);
+        const { videoUrl, method } = reel.mediaUrl
+          ? { videoUrl: reel.mediaUrl, method: "graph" as const }
+          : await resolveWithRetry(resolver, reel.permalink);
         row.videoUrl = videoUrl;
         row.method = method;
         if (verify) {
@@ -137,6 +139,19 @@ export async function onboardSalonReels(
       `${seed.alreadySynced} déjà présent(s), ${seed.hashDupes} doublon(s), ${seed.failed} échec(s)`,
   );
   return { handle, candidates: reels.length, resolved: seedReels.length, dryRun: false, rows, seed };
+}
+
+/** saveinsta times out now and then on a reel that resolves fine a moment later. */
+async function resolveWithRetry(
+  resolver: Awaited<ReturnType<typeof openReelResolver>>,
+  permalink: string,
+): Promise<{ videoUrl: string; method: ResolveMethod }> {
+  try {
+    return await resolver.resolve(permalink);
+  } catch {
+    await sleep(RESOLVE_SPACING_MS);
+    return resolver.resolve(permalink);
+  }
 }
 
 /** Build the reel list either from explicit permalinks or Business Discovery. */
@@ -192,6 +207,7 @@ function reelFromPermalink(permalink: string): Reel {
     caption: "",
     permalink,
     thumbnailUrl: null,
+    mediaUrl: null,
     timestamp: null,
     likeCount: 0,
   };

@@ -7,6 +7,7 @@ const reel = (id: string, caption: string, timestamp: string): Reel => ({
   caption,
   permalink: `https://www.instagram.com/reel/${id}/`,
   thumbnailUrl: null,
+  mediaUrl: null,
   timestamp,
   likeCount: 0,
 });
