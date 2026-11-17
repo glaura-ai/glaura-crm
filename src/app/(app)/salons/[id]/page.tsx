@@ -13,7 +13,8 @@ import { prisma } from "@/lib/db";
 import { addReminder, approveProIdentityAndRetry, changeStatus, completeReminder, logActivity, queueFollowUpEmail, setDailyPriority, triggerOnboarding, updateSalon } from "@/lib/actions";
 import { isDailyPriorityActive } from "@/lib/dailyPriority";
 import { canRevealOnboardingPassword } from "@/lib/onboarding-access";
-import { onboardingPreviewValues } from "@/lib/onboarding/salon-credentials";
+import { fetchCompanyUserName, onboardingPreviewValues } from "@/lib/onboarding/salon-credentials";
+import { salonPageUrl } from "@/lib/onboarding/welcome-email";
 import {
   ACTIVITY_LABEL,
   BOOKING_LABEL,
@@ -89,6 +90,9 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
   const onboardingValues = emailTemplates.some((template) => template.format === "HTML")
     ? await onboardingPreviewValues(id, salon.name)
     : null;
+  // The public page renders even while the account is disabled — the team
+  // previews it before the demo.
+  const salonSlug = await fetchCompanyUserName(credentialJob?.accountUid ?? latestJob?.accountUid);
   const onboardingBusy = latestJob?.status === "QUEUED" || latestJob?.status === "PROCESSING";
   const canTrigger = !!me && hasBookingUrl && !onboardingBusy && (isAdmin || salon.assignedToId === me.id) && (isAdmin || salon.status === "SIGNE");
   const canRevealPassword = canRevealOnboardingPassword(me);
@@ -247,6 +251,16 @@ export default async function SalonDetailPage({ params }: { params: Promise<{ id
                 {credentialJob && canRevealPassword && <OnboardingPasswordReveal jobId={credentialJob.id} />}
                 {latestJob.serviceCount != null && (
                   <div className="mt-1 text-xs font-medium text-slate-500">{latestJob.serviceCount} services · {latestJob.agentCount ?? 0} agents</div>
+                )}
+                {salonSlug && (
+                  <a
+                    href={salonPageUrl(salonSlug)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 inline-block text-sm font-semibold text-rose-600 hover:text-rose-700"
+                  >
+                    Voir la page salon ↗
+                  </a>
                 )}
                 {latestJob.error && <p className="mt-2 text-sm text-rose-700">{latestJob.error}</p>}
                 {latestJob.status === "REVIEW_REQUIRED" && isAdmin && (

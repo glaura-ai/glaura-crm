@@ -873,7 +873,9 @@ export async function createDisabledSalonAccount(
   // aborts the (already complete) onboarding.
   const welcome = overrides?.magicLinkSignIn
     ? await maybeSendMagicLinkEmail({ uid, email, salonName: name })
-    : await maybeSendWelcomeEmail({ email, password, companyUserName: slug, salonName: name });
+    : overrides?.sendWelcomeEmail === false
+      ? { sent: false }
+      : await maybeSendWelcomeEmail({ email, password, companyUserName: slug, salonName: name });
   if (welcome.error) {
     warnings.push(`Welcome email failed for ${email}: ${welcome.error}`);
   }

@@ -21,6 +21,7 @@
  */
 
 import { proPreviewJobContract } from "../src/lib/onboarding/pro-plan";
+import { withSalonContactLogin } from "../src/lib/onboarding/contact-login";
 import { loadEnvConfig } from "@next/env";
 import type { PrismaClient } from "../src/generated/prisma/client";
 
@@ -279,7 +280,11 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
   try {
     // Per-job `config` (JSON column) carries P6 overrides — login creds, enable
     // flag, mode, deposit, agent/review targets. Absent → legacy disabled behavior.
-    const overrides = (job.config ?? undefined) as OnboardingOverrides | undefined;
+    const overrides = await withSalonContactLogin(
+      (job.config ?? undefined) as OnboardingOverrides | undefined,
+      job.salon.contactEmail,
+      pipeline.emailAlreadyRegistered,
+    );
     const isDemoFlow = overrides?.onboardingFlow === "demo";
 
     // 0. Fast-fail create-mode email collisions BEFORE the expensive scrape/LLM.
