@@ -13,14 +13,24 @@ const CAPTION_CHARS = 400;
 export type CaptionCandidate = { id: string; caption: string };
 export type ReelClassifier = (candidates: CaptionCandidate[], services: string[]) => Promise<Set<string>>;
 
-const MatchSchema = z.object({ serviceReelIds: z.array(z.string()) });
+// Each kept reel must name the service it shows (by its number in the list):
+// "sounds beauty-related" is not enough. Mirrors the publishable rule of the
+// backend matcher (goglow-firebase instagram/serviceMatcherLLM.js), which
+// otherwise hides the reel after upload and wastes one of the 5 slots.
+const MatchSchema = z.object({
+  matches: z.array(z.object({ reelId: z.string(), serviceNumber: z.number() })),
+});
 
 const SYSTEM_PROMPT = [
   "Tu tries les reels Instagram d'un salon de beauté.",
-  "Garde un reel seulement si sa légende montre clairement une prestation réalisée",
-  "qui correspond à un des services du salon (résultat, avant/après, démonstration).",
-  "Écarte vœux, annonces, promos sans prestation, lifestyle, concours, recrutement.",
-  "Réponds avec les ids gardés.",
+  "Pour chaque reel, trouve le service de la liste numérotée que la vidéo montre réellement :",
+  "le résultat, la technique ou l'avant/après d'une prestation précise et réservable.",
+  "Garde un reel SEULEMENT si la légende nomme ou décrit clairement cette prestation",
+  "et que le reel aurait sa place sur la page de ce service.",
+  "Écarte : légendes vagues ou d'ambiance (« transformation », « élégance ») sans prestation nommée,",
+  "présentation d'outils, de matériel ou de produits, vœux, annonces, promos, ouverture d'agenda,",
+  "lifestyle, conseils généraux, concours, recrutement, et toute prestation absente de la liste.",
+  "Dans le doute, écarte. Réponds avec les reels gardés et le numéro du service.",
 ].join(" ");
 
 /** Default classifier: one Haiku call for all captions. */
@@ -28,16 +38,21 @@ export const haikuReelClassifier: ReelClassifier = async (candidates, services) 
   const client = new Anthropic({ timeout: 60_000 });
   const response = await client.messages.parse({
     model: MODEL,
-    max_tokens: 1024,
+    max_tokens: 2048,
     system: SYSTEM_PROMPT,
     output_config: { format: zodOutputFormat(MatchSchema) },
     messages: [{
       role: "user",
-      content: `Services du salon :\n${services.map((s) => `- ${s}`).join("\n")}\n\nReels :\n${JSON.stringify(candidates)}`,
+      content: `Services du salon :\n${services.map((s, i) => `${i + 1}. ${s}`).join("\n")}\n\nReels :\n${JSON.stringify(candidates)}`,
     }],
   });
   const ids = new Set(candidates.map((c) => c.id));
-  return new Set((response.parsed_output?.serviceReelIds ?? []).filter((id) => ids.has(id)));
+  const validService = (n: number) => Number.isInteger(n) && n >= 1 && n <= services.length;
+  return new Set(
+    (response.parsed_output?.matches ?? [])
+      .filter((m) => ids.has(m.reelId) && validService(m.serviceNumber))
+      .map((m) => m.reelId),
+  );
 };
 
 const newestFirst = (a: Reel, b: Reel) => (b.timestamp ?? "").localeCompare(a.timestamp ?? "");
