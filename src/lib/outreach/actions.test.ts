@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ admin: vi.fn(), conversation: vi.fn(), create: vi.fn(), updateMany: vi.fn(), salonUpdate: vi.fn(), convUpdate: vi.fn(), enabled: vi.fn() }));
 vi.mock("@/lib/access", () => ({ requireInstagramAdmin: mocks.admin }));
-vi.mock("./config", () => ({ outreachEnabled: mocks.enabled }));
+vi.mock("./settings", () => ({ getOutreachSettings: vi.fn().mockResolvedValue({}), outreachActive: mocks.enabled }));
 const tx = { outreachSequence: { updateMany: mocks.updateMany }, salon: { updateMany: mocks.salonUpdate }, instagramConversation: { update: mocks.convUpdate } };
 vi.mock("@/lib/db", () => ({ prisma: { instagramConversation: { findUnique: mocks.conversation }, outreachSequence: { create: mocks.create, updateMany: mocks.updateMany }, $transaction: (fn: (t: typeof tx) => Promise<void>) => fn(tx) } }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));

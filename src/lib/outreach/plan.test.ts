@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { planOutreach, type PlanInput } from "./plan";
-import { STEP2_AFTER_START_MS, STEP3_AFTER_START_MS } from "./config";
+import { DEFAULT_OUTREACH_SETTINGS as S } from "./settings";
+
+const STEP2_AFTER_START_MS = 2 * 24 * 3600000;
+const STEP3_AFTER_START_MS = 5 * 24 * 3600000;
 
 const H = 3600000;
 const D = 24 * H;
@@ -9,7 +12,7 @@ const paris = (iso: string) => new Date(iso); // readability: pass explicit Z in
 const start = paris("2026-11-18T09:00:00Z"); // 10:00 Paris
 const base = (o: Partial<PlanInput> = {}): PlanInput => ({
   step: 0, startedAt: start, lastSentAt: null, phone: null, lastInboundAt: start, resolvedAt: null, qualification: "CHAUD",
-  replies: [], salon: null, optedOut: false, now: start, ...o,
+  replies: [], salon: null, optedOut: false, now: start, settings: S, calendarUrl: "https://cal.example/demo", name: "Léa", ...o,
 });
 
 describe("stop rules", () => {
@@ -32,7 +35,7 @@ describe("step 0", () => {
     const now = paris("2026-11-18T01:00:00Z"); // 02:00 Paris
     const p = planOutreach(base({ now, lastInboundAt: now }));
     expect(p).toMatchObject({ kind: "send_instagram", step: 0 });
-    expect((p as { text: string }).text).toContain("http");
+    expect((p as { text: string }).text).toContain("https://cal.example/demo");
   });
   it("window closed: skips to WhatsApp when the phone is known, else fails", () => {
     const now = new Date(start.getTime() + 25 * H);
@@ -161,5 +164,39 @@ describe("replies", () => {
   });
   it("stop rules win over replies", () => {
     expect(planOutreach(base({ ...common, qualification: "FROID", replies: [reply("06 12 34 56 78")] }))).toEqual({ kind: "stop", reason: "COLD" });
+  });
+});
+
+describe("settings", () => {
+  const inbound = paris("2026-11-18T13:00:00Z"); // 14:00 Paris
+  it("renders {nom} and {lien_demo}", () => {
+    const settings = { ...S, step0Text: "Salut {nom} ! {lien_demo}" };
+    expect(planOutreach(base({ settings, name: "Studio Léa" }))).toEqual({ kind: "send_instagram", step: 0, text: "Salut Studio Léa ! https://cal.example/demo" });
+  });
+  it("uses the custom calendar url in the reminder, and appends the phone ask only without a phone", () => {
+    const now = new Date(inbound.getTime() + 20 * H + 60000);
+    const settings = { ...S, askPhoneText: "Ton numéro ?" };
+    const a = planOutreach(base({ step: 1, lastSentAt: start, lastInboundAt: inbound, now, calendarUrl: "https://x.test/c", settings })) as { text: string };
+    expect(a.text).toContain("https://x.test/c"); expect(a.text.endsWith("\nTon numéro ?")).toBe(true);
+    const b = planOutreach(base({ step: 1, lastSentAt: start, lastInboundAt: inbound, now, phone: "+33612345678", settings })) as { text: string };
+    expect(b.text).not.toContain("Ton numéro ?");
+  });
+  it("respects step1DelayHours", () => {
+    const settings = { ...S, step1DelayHours: 4 };
+    expect(planOutreach(base({ step: 1, lastSentAt: start, lastInboundAt: inbound, now: new Date(inbound.getTime() + H), settings }))).toEqual({ kind: "wait", nextRunAt: new Date(inbound.getTime() + 4 * H) });
+  });
+  it("respects custom step 2 and 3 delays", () => {
+    const settings = { ...S, step2DelayDays: 3, step3DelayDays: 7 };
+    const at = (ms: number) => new Date(start.getTime() + ms);
+    const sent = (o: Partial<PlanInput>) => base({ step: 2, lastSentAt: start, phone: "+33612345678", settings, ...o });
+    expect(planOutreach(sent({ now: at(2 * D) }))).toEqual({ kind: "wait", nextRunAt: at(3 * D) });
+    expect(planOutreach(sent({ now: at(3 * D) }))).toMatchObject({ kind: "send_whatsapp", step: 2 });
+    expect(planOutreach(sent({ step: 3, now: at(5 * D) }))).toEqual({ kind: "wait", nextRunAt: at(7 * D) });
+    expect(planOutreach(sent({ phone: null, now: at(H) }))).toEqual({ kind: "skip", toStep: 3, nextRunAt: at(7 * D) });
+  });
+  it("respects custom send hours (due 10:00 Paris, window opens at 14:00)", () => {
+    const settings = { ...S, sendHourStart: 14, sendHourEnd: 24 };
+    const p = planOutreach(base({ step: 2, lastSentAt: start, phone: "+33612345678", settings, now: new Date(start.getTime() + 2 * D) }));
+    expect(p).toEqual({ kind: "wait", nextRunAt: paris("2026-11-20T13:00:00Z") }); // 14:00 Paris
   });
 });

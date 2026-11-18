@@ -1,15 +1,15 @@
 # Séquence démo Instagram → WhatsApp
 
 Relance automatique des conversations Instagram jusqu’à la réservation d’une démo
-(`GLAURA_PRO_SALES_CALENDAR_URL`). Code : `src/lib/outreach/`, worker lancé avec
+(lien : réglage « calendrier », sinon `GLAURA_PRO_SALES_CALENDAR_URL`). Code : `src/lib/outreach/`, worker lancé avec
 `prospection-worker` (`scripts/process-prospect-jobs.ts --loop`).
 
 | Étape | Quand | Canal |
 |-|-|-|
 | 0 | Au lancement | Instagram : lien de démo |
-| 1 | Dernier message reçu + 20 h (dans la fenêtre 24 h, 9 h–20 h Paris) | Instagram : rappel + demande du numéro WhatsApp |
-| 2 | Lancement + 2 j | WhatsApp, modèle `OUTREACH_WA_TEMPLATE_1` (si numéro) |
-| 3 | Lancement + 5 j | WhatsApp, modèle `OUTREACH_WA_TEMPLATE_2` (sinon tâche commerciale) |
+| 1 | Dernier message reçu + 20 h (dans la fenêtre 24 h, 9 h–20 h Paris)* | Instagram : rappel + demande du numéro WhatsApp |
+| 2 | Lancement + 2 j | WhatsApp, modèle `template1` (si numéro) |
+| 3 | Lancement + 5 j | WhatsApp, modèle `template2` (sinon tâche commerciale) |
 
 S’arrête dès que le contact répond (sauf s’il envoie juste son numéro → passage
 WhatsApp), est qualifié FROID, réserve (« Démo réservée »), se désinscrit de
@@ -19,17 +19,17 @@ séquence arrêtée n’est jamais relancée.
 Seul un numéro donné par le contact dans le DM est utilisé pour WhatsApp (jamais
 le téléphone de la fiche salon).
 
-## Configuration (`.env` du VPS)
+*Valeurs par défaut : délais, heures d’envoi, textes (`{lien_demo}`, `{nom}`), noms et langue des modèles WhatsApp, lien du calendrier et interrupteurs (général, lancement auto) se règlent sur `/automatisations` (stockés en base, désactivé par défaut).
+
+## Configuration
+
+Réglages : page `/automatisations` (table `OutreachSettings`). Le `.env` du VPS ne garde que les secrets et l’arrêt d’urgence :
 
 ```
-OUTREACH_ENABLED=true            # interrupteur général
-OUTREACH_AUTO_START=false        # true : lancement auto pour CHAUD/TIÈDE
 META_SYSTEM_USER_TOKEN=          # system user avec whatsapp_business_messaging
 META_APP_SECRET=                 # déjà présent (appsecret_proof)
 WHATSAPP_OUTREACH_PHONE_NUMBER_ID=
-OUTREACH_WA_TEMPLATE_1=glaura_demo_invite
-OUTREACH_WA_TEMPLATE_2=glaura_demo_last_call
-OUTREACH_WA_TEMPLATE_LANG=fr
+OUTREACH_ENABLED=false           # arrêt d’urgence : coupe la séquence même si activée dans l’UI
 ```
 
 ## Modèles WhatsApp à soumettre (catégorie Marketing, langue fr)

@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => ({
   seqFind: vi.fn(), seqFindUnique: vi.fn(), seqUpdate: vi.fn(), seqUpdateMany: vi.fn(), seqCreateMany: vi.fn(),
   convFind: vi.fn(), convUpdateMany: vi.fn(), msgFind: vi.fn(), msgUpsert: vi.fn(), taskUpsert: vi.fn(),
-  inbox: vi.fn(), meta: vi.fn(), store: vi.fn(), wa: vi.fn(), optOut: vi.fn(),
+  inbox: vi.fn(), settings: vi.fn(), meta: vi.fn(), store: vi.fn(), wa: vi.fn(), optOut: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ prisma: {
   outreachSequence: { findMany: m.seqFind, findUnique: m.seqFindUnique, update: m.seqUpdate, updateMany: m.seqUpdateMany, createMany: m.seqCreateMany },
@@ -12,7 +12,11 @@ vi.mock("@/lib/db", () => ({ prisma: {
 vi.mock("@/lib/instagram-inbox/client", () => ({ inboxConfig: m.inbox, metaRequest: m.meta }));
 vi.mock("@/lib/instagram-inbox/store", () => ({ storeInstagramMessage: m.store }));
 vi.mock("./whatsapp", () => ({ sendOutreachTemplate: m.wa, isWhatsappOptedOut: m.optOut }));
+vi.mock("./settings", async orig => ({ ...await orig<typeof import("./settings")>(), getOutreachSettings: m.settings }));
 import { processOutreach } from "./engine";
+import { DEFAULT_OUTREACH_SETTINGS } from "./settings";
+
+const on = (o = {}) => ({ ...DEFAULT_OUTREACH_SETTINGS, enabled: true, ...o });
 
 const now = new Date("2026-11-18T09:00:00Z");
 const conv = (o = {}) => ({ id: "c1", participantId: "p1", username: "lea", lastInboundAt: now, resolvedAt: null, qualification: "CHAUD", qualificationPending: false, qualifiedMessageId: null, qualifiedMessageHash: null, salon: { id: "s1", name: "Studio Léa", status: "INTERESSE", accountStatusLabel: null, assignedToId: "u1" }, ...o });
@@ -21,23 +25,28 @@ const inbound = (text: string, sentAt = now) => ({ id: `i-${text}`, text, sentAt
 const saved = () => m.seqUpdate.mock.calls[0][0].data;
 
 beforeEach(() => {
-  vi.clearAllMocks(); vi.unstubAllEnvs(); vi.stubEnv("OUTREACH_ENABLED", "true");
-  vi.stubEnv("META_SYSTEM_USER_TOKEN", "t"); vi.stubEnv("WHATSAPP_OUTREACH_PHONE_NUMBER_ID", "1"); vi.stubEnv("OUTREACH_WA_TEMPLATE_1", "tpl1"); vi.stubEnv("OUTREACH_WA_TEMPLATE_2", "tpl2");
+  vi.clearAllMocks(); vi.unstubAllEnvs(); vi.stubEnv("META_SYSTEM_USER_TOKEN", "t"); vi.stubEnv("WHATSAPP_OUTREACH_PHONE_NUMBER_ID", "1");
+  m.settings.mockResolvedValue(on({ template1: "tpl1", template2: "tpl2", templateLang: "fr" }));
   m.seqFind.mockResolvedValue([{ conversationId: "c1" }]); m.seqUpdateMany.mockResolvedValue({ count: 1 });
   m.seqFindUnique.mockResolvedValue(seq()); m.msgFind.mockResolvedValue([inbound("salut")]);
   m.inbox.mockResolvedValue({ accountId: "acc" }); m.meta.mockResolvedValue({ message_id: "mid" }); m.wa.mockResolvedValue("wamid.9"); m.optOut.mockResolvedValue(false);
 });
 
-it("does nothing when disabled", async () => {
-  vi.stubEnv("OUTREACH_ENABLED", "");
+it("does nothing when disabled in settings", async () => {
+  m.settings.mockResolvedValue(on({ enabled: false, autoStart: true }));
   await processOutreach(now);
-  expect(m.seqFind).not.toHaveBeenCalled(); expect(m.convFind).not.toHaveBeenCalled();
+  expect(m.seqFind).not.toHaveBeenCalled(); expect(m.convFind).not.toHaveBeenCalled(); expect(m.meta).not.toHaveBeenCalled();
+});
+it("does nothing when killed by OUTREACH_ENABLED=false", async () => {
+  vi.stubEnv("OUTREACH_ENABLED", "false");
+  await processOutreach(now);
+  expect(m.seqFind).not.toHaveBeenCalled();
 });
 it("auto-enrols hot/warm conversations without a sequence only when enabled", async () => {
   m.convFind.mockResolvedValue([{ id: "c9" }]); m.seqFind.mockResolvedValue([]);
   await processOutreach(now);
   expect(m.convFind).not.toHaveBeenCalled();
-  vi.stubEnv("OUTREACH_AUTO_START", "true");
+  m.settings.mockResolvedValue(on({ autoStart: true }));
   await processOutreach(now);
   expect(m.convFind.mock.calls[0][0].where).toMatchObject({ qualification: { in: ["CHAUD", "TIEDE"] }, outreach: { is: null } });
   expect(m.seqCreateMany).toHaveBeenCalledWith({ data: [{ conversationId: "c9", nextRunAt: now }], skipDuplicates: true });
@@ -52,6 +61,17 @@ it("step 0 sends the Instagram message, records it and advances", async () => {
   expect(m.meta).toHaveBeenCalledWith("acc/messages", expect.objectContaining({ method: "POST" }), expect.anything());
   expect(m.store).toHaveBeenCalledWith("acc", expect.objectContaining({ participantId: "p1", incoming: false }));
   expect(saved()).toMatchObject({ step: 1, lastSentAt: now, leaseAt: null, lastError: null });
+});
+it("sends the settings texts with the salon name and custom calendar url", async () => {
+  m.settings.mockResolvedValue(on({ step0Text: "Yo {nom} {lien_demo}", calendarUrl: "https://cal.test/x" }));
+  await processOutreach(now);
+  expect(m.meta.mock.calls[0][1].body.message.text).toBe("Yo Studio Léa https://cal.test/x");
+});
+it("uses the configured WhatsApp language", async () => {
+  m.settings.mockResolvedValue(on({ templateLang: "en_GB" }));
+  m.seqFindUnique.mockResolvedValue(seq({ step: 2, phone: "+33612345678", lastSentAt: now }));
+  await processOutreach(new Date("2026-11-20T09:00:00Z"));
+  expect(m.wa.mock.calls[0][0]).toMatchObject({ language: "en_GB" });
 });
 it("stops on a closed salon without sending", async () => {
   m.seqFindUnique.mockResolvedValue(seq({ conversation: conv({ salon: { id: "s1", name: "x", status: "SIGNE", accountStatusLabel: null, assignedToId: null } }) }));
@@ -68,7 +88,7 @@ it("sends WhatsApp template 1, mirrors it in the inbox and moves to step 3", asy
   const later = new Date("2026-11-20T09:00:00Z");
   m.seqFindUnique.mockResolvedValue(seq({ step: 2, phone: "+33612345678", lastSentAt: now, conversation: conv({ lastInboundAt: now }) }));
   await processOutreach(later);
-  expect(m.wa).toHaveBeenCalledWith({ to: "+33612345678", template: "tpl1", displayName: "Studio Léa" });
+  expect(m.wa).toHaveBeenCalledWith({ to: "+33612345678", template: "tpl1", language: "fr", displayName: "Studio Léa" });
   expect(m.msgUpsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ id: "wa:wamid.9", incoming: false, text: expect.stringContaining("+33612345678") }) }));
   expect(m.convUpdateMany).toHaveBeenCalled();
   expect(saved()).toMatchObject({ step: 3, lastSentAt: later });

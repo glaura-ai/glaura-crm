@@ -590,6 +590,28 @@ model OutreachSequence {
   @@index([status, nextRunAt])
 }
 
+// Singleton (id "default"): editable settings of the demo-booking sequence
+// (/automatisations). No row = code defaults (sequence off).
+model OutreachSettings {
+  id              String   @id @default("default")
+  enabled         Boolean  @default(false)
+  autoStart       Boolean  @default(false)
+  step0Text       String   @db.Text
+  step1Text       String   @db.Text
+  askPhoneText    String   @db.Text
+  step1DelayHours Int      @default(20)
+  step2DelayDays  Int      @default(2)
+  step3DelayDays  Int      @default(5)
+  sendHourStart   Int      @default(9)
+  sendHourEnd     Int      @default(20)
+  template1       String   @default("glaura_demo_invite")
+  template2       String   @default("glaura_demo_last_call")
+  templateLang    String   @default("fr")
+  calendarUrl     String?
+  updatedById     String?
+  updatedAt       DateTime @updatedAt
+}
+
 // Singleton queue and progress for the private admin inbox history import.
 model InstagramSync {
   id String @id

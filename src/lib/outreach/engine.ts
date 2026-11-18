@@ -3,7 +3,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { inboxConfig, metaRequest } from "@/lib/instagram-inbox/client";
 import { currentQualification } from "@/lib/instagram-inbox/qualification";
 import { storeInstagramMessage } from "@/lib/instagram-inbox/store";
-import { outreachAutoStart, outreachEnabled, whatsappOutreachConfig } from "./config";
+import { calendarUrlOf, getOutreachSettings, outreachActive, type OutreachSettings } from "./settings";
 import { planOutreach, type OutreachPlan } from "./plan";
 import { extractFrenchMobile } from "./phone";
 import { isWhatsappOptedOut, sendOutreachTemplate } from "./whatsapp";
@@ -24,10 +24,8 @@ async function autoEnrol(now: Date) {
 
 const attemptsSoFar = (lastError: string | null) => Number(/^tentative (\d+)/.exec(lastError ?? "")?.[1] ?? 0);
 
-async function sendWhatsapp(conversationId: string, plan: Extract<OutreachPlan, { kind: "send_whatsapp" }>, phone: string, displayName: string, now: Date) {
-  const config = whatsappOutreachConfig();
-  if (!config) throw new Error("La connexion WhatsApp n’est pas configurée.");
-  const wamid = await sendOutreachTemplate({ to: phone, template: plan.template === 1 ? config.template1 : config.template2, displayName });
+async function sendWhatsapp(conversationId: string, plan: Extract<OutreachPlan, { kind: "send_whatsapp" }>, phone: string, displayName: string, settings: OutreachSettings, now: Date) {
+  const wamid = await sendOutreachTemplate({ to: phone, template: plan.template === 1 ? settings.template1 : settings.template2, language: settings.templateLang, displayName });
   const text = `[WhatsApp] Relance démo envoyée au ${phone}`;
   await prisma.instagramMessage.upsert({ where: { id: `wa:${wamid}` }, create: { id: `wa:${wamid}`, conversationId, incoming: false, text, sentAt: now }, update: {} });
   await prisma.instagramConversation.updateMany({ where: { id: conversationId, lastMessageAt: { lt: now } }, data: { lastMessageAt: now } });
@@ -48,7 +46,7 @@ async function createTask(conversationId: string, salon: { id: string; assignedT
   } });
 }
 
-async function runOne(conversationId: string, now: Date) {
+async function runOne(conversationId: string, settings: OutreachSettings, now: Date) {
   const seq = await prisma.outreachSequence.findUnique({ where: { conversationId }, include: { conversation: { include: { salon: true } } } });
   if (!seq || seq.status !== "ACTIVE") return;
   const { conversation } = seq;
@@ -62,7 +60,7 @@ async function runOne(conversationId: string, now: Date) {
   const plan = planOutreach({
     step: seq.step, startedAt: seq.startedAt, lastSentAt: seq.lastSentAt, phone, lastInboundAt: conversation.lastInboundAt, resolvedAt: conversation.resolvedAt,
     qualification: currentQualification(conversation, lastIncoming) ? conversation.qualification : null, replies,
-    salon: conversation.salon, optedOut, now,
+    salon: conversation.salon, optedOut, now, settings, calendarUrl: calendarUrlOf(settings), name: conversation.salon?.name || conversation.username || "toi",
   });
   const done = { leaseAt: null, lastError: null };
   const save = (data: Prisma.OutreachSequenceUncheckedUpdateInput) => prisma.outreachSequence.update({ where: { conversationId }, data: { ...done, ...(phone !== seq.phone ? { phone } : {}), ...data } });
@@ -78,7 +76,7 @@ async function runOne(conversationId: string, now: Date) {
         await sendInstagram(conversation.participantId, plan.text);
         return void await save({ step: plan.step + 1, lastSentAt: now, nextRunAt: now });
       case "send_whatsapp":
-        await sendWhatsapp(conversationId, plan, phone!, displayName, now);
+        await sendWhatsapp(conversationId, plan, phone!, displayName, settings, now);
         return void await save(plan.step === 3 ? { step: 4, status: "DONE", lastSentAt: now, nextRunAt: null } : { step: 3, lastSentAt: now, nextRunAt: now });
     }
   } catch (e) {
@@ -89,14 +87,15 @@ async function runOne(conversationId: string, now: Date) {
 }
 
 export async function processOutreach(now = new Date()) {
-  if (!outreachEnabled()) return;
-  if (outreachAutoStart()) await autoEnrol(now);
+  const settings = await getOutreachSettings();
+  if (!outreachActive(settings)) return;
+  if (settings.autoStart) await autoEnrol(now);
   const stale = new Date(now.getTime() - LEASE_MS);
   const due = await prisma.outreachSequence.findMany({ where: { status: "ACTIVE", nextRunAt: { lte: now }, OR: [{ leaseAt: null }, { leaseAt: { lt: stale } }] }, orderBy: { nextRunAt: "asc" }, take: BATCH, select: { conversationId: true } });
   for (const { conversationId } of due) {
     const claimed = await prisma.outreachSequence.updateMany({ where: { conversationId, status: "ACTIVE", nextRunAt: { lte: now }, OR: [{ leaseAt: null }, { leaseAt: { lt: stale } }] }, data: { leaseAt: now } });
     if (!claimed.count) continue;
-    try { await runOne(conversationId, now); }
+    try { await runOne(conversationId, settings, now); }
     catch { await prisma.outreachSequence.updateMany({ where: { conversationId }, data: { leaseAt: null } }); }
   }
 }

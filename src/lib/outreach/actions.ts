@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireInstagramAdmin } from "@/lib/access";
 import { prisma } from "@/lib/db";
 import { inboxHref } from "@/lib/instagram-inbox/tracking";
-import { outreachEnabled } from "./config";
+import { getOutreachSettings, outreachActive } from "./settings";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -23,7 +23,7 @@ async function outreachAction(fd: FormData, work: (id: string, userId: string) =
 
 export async function startOutreach(fd: FormData) {
   return outreachAction(fd, async (id, userId) => {
-    if (!outreachEnabled()) throw new Error("La séquence automatique est désactivée.");
+    if (!outreachActive(await getOutreachSettings())) throw new Error("La séquence automatique est désactivée.");
     const conversation = await prisma.instagramConversation.findUnique({ where: { id }, include: { outreach: true } });
     if (conversation?.outreach) throw new Error("Une séquence a déjà été lancée pour cette conversation.");
     if (conversation?.qualification === "FROID" || conversation?.resolvedAt) throw new Error("Cette conversation est froide ou déjà traitée.");
