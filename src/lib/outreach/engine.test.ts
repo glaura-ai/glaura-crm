@@ -20,7 +20,7 @@ const on = (o = {}) => ({ ...DEFAULT_OUTREACH_SETTINGS, enabled: true, ...o });
 
 const now = new Date("2026-11-18T09:00:00Z");
 const conv = (o = {}) => ({ id: "c1", participantId: "p1", username: "lea", lastInboundAt: now, resolvedAt: null, qualification: "CHAUD", qualificationPending: false, qualifiedMessageId: null, qualifiedMessageHash: null, salon: { id: "s1", name: "Studio Léa", status: "INTERESSE", accountStatusLabel: null, assignedToId: "u1" }, ...o });
-const seq = (o = {}) => ({ conversationId: "c1", status: "ACTIVE", step: 0, startedAt: now, lastSentAt: null, phone: null, lastError: null, conversation: conv(), ...o });
+const seq = (o = {}) => ({ conversationId: "c1", linkToken: "tok-1", status: "ACTIVE", step: 0, startedAt: now, lastSentAt: null, phone: null, lastError: null, conversation: conv(), ...o });
 const inbound = (text: string, sentAt = now) => ({ id: `i-${text}`, text, sentAt, incoming: true });
 const saved = () => m.seqUpdate.mock.calls[0][0].data;
 
@@ -62,10 +62,10 @@ it("step 0 sends the Instagram message, records it and advances", async () => {
   expect(m.store).toHaveBeenCalledWith("acc", expect.objectContaining({ participantId: "p1", incoming: false }));
   expect(saved()).toMatchObject({ step: 1, lastSentAt: now, leaseAt: null, lastError: null });
 });
-it("sends the settings texts with the salon name and custom calendar url", async () => {
+it("sends the settings texts with the salon name and the tracked link, never the raw calendar url", async () => {
   m.settings.mockResolvedValue(on({ step0Text: "Yo {nom} {lien_demo}", calendarUrl: "https://cal.test/x" }));
   await processOutreach(now);
-  expect(m.meta.mock.calls[0][1].body.message.text).toBe("Yo Studio Léa https://cal.test/x");
+  expect(m.meta.mock.calls[0][1].body.message.text).toBe("Yo Studio Léa https://crm.glaura.ai/demo/tok-1");
 });
 it("uses the configured WhatsApp language", async () => {
   m.settings.mockResolvedValue(on({ templateLang: "en_GB" }));
@@ -88,7 +88,7 @@ it("sends WhatsApp template 1, mirrors it in the inbox and moves to step 3", asy
   const later = new Date("2026-11-20T09:00:00Z");
   m.seqFindUnique.mockResolvedValue(seq({ step: 2, phone: "+33612345678", lastSentAt: now, conversation: conv({ lastInboundAt: now }) }));
   await processOutreach(later);
-  expect(m.wa).toHaveBeenCalledWith({ to: "+33612345678", template: "tpl1", language: "fr", displayName: "Studio Léa" });
+  expect(m.wa).toHaveBeenCalledWith({ to: "+33612345678", template: "tpl1", language: "fr", displayName: "Studio Léa", buttonParam: "tok-1" });
   expect(m.msgUpsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ id: "wa:wamid.9", incoming: false, text: expect.stringContaining("+33612345678") }) }));
   expect(m.convUpdateMany).toHaveBeenCalled();
   expect(saved()).toMatchObject({ step: 3, lastSentAt: later });
