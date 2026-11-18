@@ -138,6 +138,7 @@ model User {
   createdAt       DateTime  @default(now())
   lastLogin       DateTime?
   accessGrantedAt DateTime? // explicit approval from the team administration
+  bookingUrl      String? // personal demo calendar, used by the outreach /demo/<token> redirect
 
   tasks             SalesTask[]
   assignedProspects Prospect[]      @relation("ProspectOwner")
@@ -584,6 +585,9 @@ model OutreachSequence {
   lastError      String?
   leaseAt        DateTime?
   startedById    String?
+  linkToken      String                @unique @default(uuid()) // public /demo/<token> redirect
+  linkClicks     Int                   @default(0)
+  linkClickedAt  DateTime?
   startedAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
 

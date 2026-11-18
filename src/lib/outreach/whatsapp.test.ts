@@ -18,6 +18,12 @@ it("posts the template with bearer token, appsecret_proof and the salon name", a
   expect(init.redirect).toBe("error");
   expect(JSON.parse(init.body)).toEqual({ messaging_product: "whatsapp", to: "33612345678", type: "template", template: { name: "t1", language: { code: "fr" }, components: [{ type: "body", parameters: [{ type: "text", text: "Studio Léa" }] }] } });
 });
+it("adds the dynamic URL button parameter", async () => {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ messages: [{ id: "w" }] }) });
+  vi.stubGlobal("fetch", fetchMock);
+  await sendOutreachTemplate({ to: "+33612345678", template: "t1", language: "fr", displayName: "x", buttonParam: "tok" });
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body).template.components[1]).toEqual({ type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: "tok" }] });
+});
 it("uses the given template language", async () => {
   const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ messages: [{ id: "w" }] }) });
   vi.stubGlobal("fetch", fetchMock);
