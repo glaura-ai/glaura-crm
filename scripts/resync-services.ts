@@ -54,7 +54,7 @@ import {
 } from "@/lib/onboarding/resync";
 
 const FUNCTIONS_BASE_URL =
-  process.env.GLAURA_FUNCTIONS_BASE_URL?.trim() || "https://us-central1-beauty-984c8.cloudfunctions.net";
+  process.env.GLAURA_FUNCTIONS_BASE_URL?.trim() || "https://api.glaura.ai";
 
 interface CliArgs {
   uid: string;
