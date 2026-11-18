@@ -7,6 +7,8 @@ async function main() {
   const { prisma } = await import("../src/lib/db");
   const { startLeadQualificationWorker } = await import("../src/lib/instagram-inbox/qualification-jobs");
   const stopQualification = process.argv.includes("--loop") ? startLeadQualificationWorker() : () => {};
+  const { startOutreachWorker } = await import("../src/lib/outreach/engine");
+  const stopOutreach = process.argv.includes("--loop") ? startOutreachWorker() : () => {};
   const { startInstagramSyncWorker } = await import("../src/lib/instagram-inbox/jobs");
   const stopHistorySync = process.argv.includes("--loop") ? startInstagramSyncWorker() : () => {};
   const { startFirebaseInboxSync } = await import("../src/lib/instagram-inbox/firebase-sync");
@@ -53,6 +55,7 @@ async function main() {
   stopInboxSync();
   stopHistorySync();
   stopQualification();
+  stopOutreach();
   await prisma.$disconnect();
 }
 main().catch(() => { console.error("Le service de prospection a rencontré une erreur."); process.exitCode = 1; });
