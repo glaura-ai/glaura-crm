@@ -25,6 +25,7 @@ export const outreachSettingsSchema = z.object({
   template1: z.string().trim().regex(/^[a-z0-9_]{1,512}$/, "Nom de modèle WhatsApp invalide (minuscules, chiffres, _)."),
   template2: z.string().trim().regex(/^[a-z0-9_]{1,512}$/, "Nom de modèle WhatsApp invalide (minuscules, chiffres, _)."),
   templateLang: z.string().trim().regex(/^[a-z]{2}(_[A-Z]{2})?$/, "Code langue invalide (ex. fr)."),
+  // Lien par défaut (si le commercial n’a pas de lien personnel).
   calendarUrl: z.url({ protocol: /^https$/ }).nullable(),
 }).refine(s => s.step3DelayDays > s.step2DelayDays, { message: "Le dernier WhatsApp doit partir après le premier.", path: ["step3DelayDays"] })
   .refine(s => s.sendHourEnd > s.sendHourStart, { message: "L’heure de fin doit être après l’heure de début.", path: ["sendHourEnd"] });
@@ -43,8 +44,8 @@ export const DEFAULT_OUTREACH_SETTINGS: OutreachSettings = {
   step3DelayDays: 5,
   sendHourStart: 9,
   sendHourEnd: 20,
-  template1: "glaura_demo_invite",
-  template2: "glaura_demo_last_call",
+  template1: "glaura_demo_invite_v2",
+  template2: "glaura_demo_last_call_v2",
   templateLang: "fr",
   calendarUrl: null,
 };

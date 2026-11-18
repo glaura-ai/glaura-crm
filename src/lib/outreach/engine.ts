@@ -3,7 +3,8 @@ import type { Prisma } from "@/generated/prisma/client";
 import { inboxConfig, metaRequest } from "@/lib/instagram-inbox/client";
 import { currentQualification } from "@/lib/instagram-inbox/qualification";
 import { storeInstagramMessage } from "@/lib/instagram-inbox/store";
-import { calendarUrlOf, getOutreachSettings, outreachActive, type OutreachSettings } from "./settings";
+import { getOutreachSettings, outreachActive, type OutreachSettings } from "./settings";
+import { trackedLink } from "./booking";
 import { planOutreach, type OutreachPlan } from "./plan";
 import { extractFrenchMobile } from "./phone";
 import { isWhatsappOptedOut, sendOutreachTemplate } from "./whatsapp";
@@ -24,8 +25,8 @@ async function autoEnrol(now: Date) {
 
 const attemptsSoFar = (lastError: string | null) => Number(/^tentative (\d+)/.exec(lastError ?? "")?.[1] ?? 0);
 
-async function sendWhatsapp(conversationId: string, plan: Extract<OutreachPlan, { kind: "send_whatsapp" }>, phone: string, displayName: string, settings: OutreachSettings, now: Date) {
-  const wamid = await sendOutreachTemplate({ to: phone, template: plan.template === 1 ? settings.template1 : settings.template2, language: settings.templateLang, displayName });
+async function sendWhatsapp(conversationId: string, plan: Extract<OutreachPlan, { kind: "send_whatsapp" }>, phone: string, displayName: string, linkToken: string, settings: OutreachSettings, now: Date) {
+  const wamid = await sendOutreachTemplate({ to: phone, template: plan.template === 1 ? settings.template1 : settings.template2, language: settings.templateLang, displayName, buttonParam: linkToken });
   const text = `[WhatsApp] Relance démo envoyée au ${phone}`;
   await prisma.instagramMessage.upsert({ where: { id: `wa:${wamid}` }, create: { id: `wa:${wamid}`, conversationId, incoming: false, text, sentAt: now }, update: {} });
   await prisma.instagramConversation.updateMany({ where: { id: conversationId, lastMessageAt: { lt: now } }, data: { lastMessageAt: now } });
@@ -60,7 +61,7 @@ async function runOne(conversationId: string, settings: OutreachSettings, now: D
   const plan = planOutreach({
     step: seq.step, startedAt: seq.startedAt, lastSentAt: seq.lastSentAt, phone, lastInboundAt: conversation.lastInboundAt, resolvedAt: conversation.resolvedAt,
     qualification: currentQualification(conversation, lastIncoming) ? conversation.qualification : null, replies,
-    salon: conversation.salon, optedOut, now, settings, calendarUrl: calendarUrlOf(settings), name: conversation.salon?.name || conversation.username || "toi",
+    salon: conversation.salon, optedOut, now, settings, calendarUrl: trackedLink(seq.linkToken), name: conversation.salon?.name || conversation.username || "toi",
   });
   const done = { leaseAt: null, lastError: null };
   const save = (data: Prisma.OutreachSequenceUncheckedUpdateInput) => prisma.outreachSequence.update({ where: { conversationId }, data: { ...done, ...(phone !== seq.phone ? { phone } : {}), ...data } });
@@ -76,7 +77,7 @@ async function runOne(conversationId: string, settings: OutreachSettings, now: D
         await sendInstagram(conversation.participantId, plan.text);
         return void await save({ step: plan.step + 1, lastSentAt: now, nextRunAt: now });
       case "send_whatsapp":
-        await sendWhatsapp(conversationId, plan, phone!, displayName, settings, now);
+        await sendWhatsapp(conversationId, plan, phone!, displayName, seq.linkToken, settings, now);
         return void await save(plan.step === 3 ? { step: 4, status: "DONE", lastSentAt: now, nextRunAt: null } : { step: 3, lastSentAt: now, nextRunAt: now });
     }
   } catch (e) {

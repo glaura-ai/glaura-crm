@@ -2,8 +2,8 @@ import { createHmac } from "node:crypto";
 import { getDb } from "@/lib/firebase-admin";
 import { whatsappOutreachConfig } from "./config";
 
-/** Sends an approved WhatsApp template (one body variable: the salon name). Returns the wamid. */
-export async function sendOutreachTemplate(opts: { to: string; template: string; language: string; displayName: string }): Promise<string> {
+/** Sends an approved WhatsApp template (body variable: the salon name; optional dynamic URL button suffix). Returns the wamid. */
+export async function sendOutreachTemplate(opts: { to: string; template: string; language: string; displayName: string; buttonParam?: string }): Promise<string> {
   const config = whatsappOutreachConfig();
   if (!config) throw new Error("La connexion WhatsApp n’est pas configurée.");
   const secret = process.env.META_APP_SECRET?.trim();
@@ -12,7 +12,7 @@ export async function sendOutreachTemplate(opts: { to: string; template: string;
   const response = await fetch(url, {
     method: "POST",
     headers: { Authorization: `Bearer ${config.token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ messaging_product: "whatsapp", to: opts.to.replace(/^\+/, ""), type: "template", template: { name: opts.template, language: { code: opts.language }, components: [{ type: "body", parameters: [{ type: "text", text: opts.displayName }] }] } }),
+    body: JSON.stringify({ messaging_product: "whatsapp", to: opts.to.replace(/^\+/, ""), type: "template", template: { name: opts.template, language: { code: opts.language }, components: [{ type: "body", parameters: [{ type: "text", text: opts.displayName }] }, ...(opts.buttonParam ? [{ type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: opts.buttonParam }] }] : [])] } }),
     cache: "no-store", signal: AbortSignal.timeout(20000), redirect: "error",
   });
   if (!response.ok) throw new Error(`WhatsApp a refusé l’envoi (HTTP ${response.status}).`);
