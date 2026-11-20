@@ -21,6 +21,7 @@
  */
 
 import { proPreviewJobContract } from "../src/lib/onboarding/pro-plan";
+import { applyBookingClaim } from "../src/lib/onboarding/pro-identity-gate";
 import { sampleServiceNames } from "../src/lib/onboarding/pro-progress";
 import { withSalonContactLogin } from "../src/lib/onboarding/contact-login";
 import { loadEnvConfig } from "@next/env";
@@ -355,7 +356,9 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
       // The test allowlist is only trustworthy when the handle came from Meta
       // OAuth. On the SMS channel the handle is salon-TYPED, so it only ever
       // gets the sms_channel pass (which still runs the booking-claim check).
-      const smsChannel = overrides.identityChannel === "sms";
+      // laura_demo (lead magnet, phone not verified) gets the same pass and
+      // never claims the booking URL.
+      const smsChannel = overrides.identityChannel === "sms" || overrides.identityChannel === "laura_demo";
       const testBypass = !smsChannel && pipeline.isProIdentityTestBypassAllowed(
         verifiedInstagramHandle,
         process.env.PRO_IDENTITY_TEST_BYPASS_HANDLES,
@@ -376,21 +379,11 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
       if (humanApproved && !testBypass) {
         identity = { ...identity, signals: ["human_approved"] };
       }
-      if (identity.status === "verified") {
-        const claim = await pipeline.claimProBookingUrl(
-          prisma,
-          job.salonId,
-          identity.bookingClaim,
-          { bypass: testBypass },
-        );
-        if (!claim.claimed) {
-          identity = {
-            ...identity,
-            status: "review_required",
-            signals: [...identity.signals, "booking_claim_conflict"],
-          };
-        }
-      }
+      identity = await applyBookingClaim(identity, {
+        identityChannel: overrides.identityChannel,
+        bypass: testBypass,
+        claim: (bookingClaim, options) => pipeline.claimProBookingUrl(prisma, job.salonId, bookingClaim, options),
+      });
       await emit("system", {
         type: "identity_checked",
         subtype: identity.status,

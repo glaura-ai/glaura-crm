@@ -30,6 +30,9 @@ import { detectBookingTool, reserveSalonSlug } from "@/lib/onboarding/self-serve
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/** Lead source label so sales can filter lead-magnet demos. */
+const LAURA_ESSAI_SOURCE = "laura_essai";
+
 const BodySchema = z.object({
   /**
    * Firebase uid of an account the portal already created → ENRICH mode.
@@ -38,7 +41,7 @@ const BodySchema = z.object({
    */
   targetUid: z.string().min(1).optional(),
   /** Salon login email — CRM contact + job trace + account login. */
-  email: z.string().email(),
+  email: z.string().email().optional(),
   /** Contact person's name (create mode → account displayName hint). */
   contactName: z.string().trim().optional(),
   /** Display name → Salon.name and the unique CRM slug. */
@@ -58,7 +61,7 @@ const BodySchema = z.object({
   /** "sms" = phone-verified only (no Instagram ownership proof). Name
    * similarity is not gated on; only a booking-link claim conflict holds the
    * preview for human review. Default: instagram. */
-  identityChannel: z.enum(["instagram", "sms"]).optional(),
+  identityChannel: z.enum(["instagram", "sms", "laura_demo"]).optional(),
   planCode: proPlanCodeSchema.optional(),
   /** "demo": no plan or trial; the salon books a sales demo after the preview. */
   onboardingFlow: z.literal("demo").optional(),
@@ -68,6 +71,9 @@ const BodySchema = z.object({
    * redirect if this service-to-service payload is malformed. */
   publicBaseUrl: z.enum(["https://glaura.ai", "https://staging-1.glaura.ai"]).optional(),
 }).superRefine((body, context) => {
+  if (!body.email && !(body.identityChannel === "laura_demo" && body.targetUid)) {
+    context.addIssue({ code: "custom", message: "email is required", path: ["email"] });
+  }
   if (body.planCode && proPlanTrialDays(body.planCode) === 0 && (!body.activationPreview || body.trialPeriodDays !== 0)) {
     context.addIssue({ code: "custom", message: "V2 onboarding requires payment-gated preview with trialPeriodDays zero", path: ["trialPeriodDays"] });
   }
@@ -122,7 +128,7 @@ export async function POST(req: NextRequest) {
 
   // Idempotency key: the portal uid in enrich mode, else the login email in
   // create mode. A retry re-enqueues against the same Salon row, never a dupe.
-  const externalRef = isEnrich ? `self_serve:${body.targetUid}` : `self_serve_email:${body.email.toLowerCase()}`;
+  const externalRef = isEnrich ? `self_serve:${body.targetUid}` : `self_serve_email:${(body.email ?? "").toLowerCase()}`;
   const existingSalon = await prisma.salon.findFirst({
     where: { externalRef },
     select: { id: true },
@@ -164,12 +170,13 @@ export async function POST(req: NextRequest) {
               name: body.salonName,
               phone: body.phone ?? null,
               contactName: body.contactName ?? null,
-              contactEmail: body.email,
+              contactEmail: body.email ?? null,
               instagram: body.instagramHandle ?? null,
               bookingTool,
               bookingUrl: body.bookingUrl,
               status: body.activationPreview ? "INTERESSE" : "SIGNE",
               accountStatusLabel: body.activationPreview ? "pro_preview" : "self_serve",
+              ...(body.identityChannel === "laura_demo" ? { sourceLabel: LAURA_ESSAI_SOURCE } : {}),
             },
             select: { id: true },
           })
@@ -182,7 +189,7 @@ export async function POST(req: NextRequest) {
               address: body.address ?? null,
               phone: body.phone ?? null,
               contactName: body.contactName ?? null,
-              contactEmail: body.email,
+              contactEmail: body.email ?? null,
               instagram: body.instagramHandle ?? null,
               bookingTool,
               bookingUrl: body.bookingUrl,
@@ -190,6 +197,7 @@ export async function POST(req: NextRequest) {
               externalRef,
               status: body.activationPreview ? "INTERESSE" : "SIGNE",
               accountStatusLabel: body.activationPreview ? "pro_preview" : "self_serve",
+              ...(body.identityChannel === "laura_demo" ? { sourceLabel: LAURA_ESSAI_SOURCE } : {}),
             },
             select: { id: true },
           })
