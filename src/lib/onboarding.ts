@@ -92,8 +92,10 @@ export type OnboardingOverrides = {
   /** How the salon proved its identity. "instagram" (default) means Business
    * Login OAuth — ownership is proven. "sms" means only the phone was
    * verified: name similarity is not gated on (they pass identity), only the
-   * booking-link claim conflict can still hold them for review. */
-  identityChannel?: "instagram" | "sms" | null;
+   * booking-link claim conflict can still hold them for review.
+   * "laura_demo" (lead-magnet demo, unverified phone, no email) behaves like
+   * "sms" but never claims the booking URL. */
+  identityChannel?: "instagram" | "sms" | "laura_demo" | null;
   /** Set by the CRM approve action when a human validated a review-held
    * signup; the re-queued job then treats identity as verified. */
   identityApproved?: boolean | null;
