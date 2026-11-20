@@ -129,6 +129,7 @@ export function renderProPreviewEmail(input: {
         `Bonjour,`,
         `La page Glaura de ${salon} est prête avec ${count} prestations.`,
         `Voir ma page : ${input.previewUrl}`,
+        `Tu peux aussi tester Laura sur ton aperçu : ${input.previewUrl}#laura`,
         `Réserver ma démo : ${values["{{lien_demo}}"]}`,
         `Pendant la démo, nous répondons à vos questions et mettons votre page en ligne.`,
       ].join("\n\n")
