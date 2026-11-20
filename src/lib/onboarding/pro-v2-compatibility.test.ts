@@ -86,6 +86,17 @@ it("uses the latest commitment choice in previews without granting ordinary mont
 });
 
 describe("CRM demo flow", () => {
+  it("accepts a laura_demo job without email and labels the lead laura_essai", async () => {
+    const noEmail: Record<string, unknown> = { ...demoBody }; delete noEmail.email;
+    expect((await onboard(request({ ...noEmail, identityChannel: "laura_demo", phone: "+33612345678" }))).status).toBe(202);
+    expect(prisma.salon.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ contactEmail: null, sourceLabel: "laura_essai" }) }));
+    expect(prisma.onboardingJob.create.mock.calls[0][0].data.config).toMatchObject({ identityChannel: "laura_demo", onboardingFlow: "demo" });
+    expect((await onboard(request({ ...noEmail, identityChannel: "sms" }))).status).toBe(400);
+  });
+  it("sends the preview SMS without crashing on an empty email", async () => {
+    await expect(prepareAndNotifyProPreview({ prisma: demoPrisma() as never, ...demoInput, email: "" })).resolves.toMatchObject({ emailQueued: false });
+    expect(emailCreate).not.toHaveBeenCalled();
+  });
   const demoBody = { ...body, identityChannel: "sms", onboardingFlow: "demo" };
   const calendar = "https://calendar.google.com/calendar/appointments/schedules/AcZssZ1ipzl7I8eSuqajWYTfp1Ro0TQljDjamtIwGbVPRWEedpKeRsV8tAnjRnqGJC5lMw5xbbwY2MxV";
   const emailCreate = vi.fn();
