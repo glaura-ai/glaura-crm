@@ -24,6 +24,7 @@ import { prisma } from "@/lib/db";
 import { normalizeInstagramHandle } from "@/lib/instagram";
 import { slugify } from "@/lib/slugs";
 import type { OnboardingOverrides } from "@/lib/onboarding";
+import { deriveProProgress } from "@/lib/onboarding/pro-progress";
 import { detectBookingTool, reserveSalonSlug } from "@/lib/onboarding/self-serve-salon";
 
 export const runtime = "nodejs";
@@ -274,5 +275,11 @@ export async function GET(req: NextRequest) {
   }
 
   const { events, ...rest } = job;
-  return NextResponse.json({ ...rest, lastEvent: events[0] ?? null });
+  const progressEvents = await prisma.onboardingJobEvent.findMany({
+    where: { jobId },
+    orderBy: { sequence: "asc" },
+    select: { type: true, data: true },
+  });
+  const progress = deriveProProgress(job, progressEvents, process.env.PRO_PREVIEW_TOKEN_SECRET ?? "");
+  return NextResponse.json({ ...rest, lastEvent: events[0] ?? null, progress });
 }

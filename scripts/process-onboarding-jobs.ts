@@ -21,6 +21,7 @@
  */
 
 import { proPreviewJobContract } from "../src/lib/onboarding/pro-plan";
+import { sampleServiceNames } from "../src/lib/onboarding/pro-progress";
 import { withSalonContactLogin } from "../src/lib/onboarding/contact-login";
 import { loadEnvConfig } from "@next/env";
 import type { PrismaClient } from "../src/generated/prisma/client";
@@ -341,6 +342,7 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
         address: extract.salon.address,
         serviceCount: extract.services.length,
         staffCount: extract.staff.length,
+        sampleServices: sampleServiceNames(extract.services.map((service) => service.service_name)),
       },
     });
 
