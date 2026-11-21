@@ -35,7 +35,10 @@ export async function prepareAndNotifyProPreview(input: {
   /** "demo": no plan, no checkout offer; the salon books a demo instead. */
   onboardingFlow?: "demo" | null;
   publicBaseUrl?: "https://glaura.ai" | "https://staging-1.glaura.ai";
+  /** false: no "aperçu prêt" email/SMS (Laura demo: the visitor waits on the page). */
+  notify?: boolean;
 }) {
+  const notify = input.notify !== false;
   const secret = process.env.PRO_PREVIEW_TOKEN_SECRET ?? "";
   const token = proPreviewToken(input.jobId, secret);
   const tokenHash = hashProPreviewToken(token);
@@ -65,7 +68,10 @@ export async function prepareAndNotifyProPreview(input: {
     : Array.isArray(salonImages) && typeof salonImages[0] === "string"
       ? salonImages[0]
       : null;
-  const emailHeroImageUrl = await emailSafeHeroImageSource(heroImageUrl);
+  // Only the notification email embeds it; skip the image download otherwise.
+  const emailHeroImageUrl = notify
+    ? await emailSafeHeroImageSource(heroImageUrl)
+    : PRO_PREVIEW_FALLBACK_HERO_IMAGE;
   const profileAddress = profile.get("address");
 
   const activationRef = db.collection("proActivationSessions").doc(tokenHash);
@@ -118,7 +124,7 @@ export async function prepareAndNotifyProPreview(input: {
     select: { id: true },
   });
   let emailQueued = Boolean(existingEmail);
-  if (!existingEmail && input.email.trim()) {
+  if (notify && !existingEmail && input.email.trim()) {
     const template = await loadProPreviewTemplate(input.prisma, isDemo ? "demo" : "standard");
     const email = renderProPreviewEmail({
       previewUrl,
@@ -149,7 +155,7 @@ export async function prepareAndNotifyProPreview(input: {
   }
 
   let smsSent = Boolean(existingData.previewSmsSentAtMs);
-  if (!smsSent && input.phone.trim()) {
+  if (notify && !smsSent && input.phone.trim()) {
     smsSent = await sendPreviewSms(input.phone, input.salonName, previewUrl, calendarUrl, input.jobId);
     if (smsSent) {
       await activationRef.set({ previewSmsSentAtMs: Date.now() }, { merge: true });

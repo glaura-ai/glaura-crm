@@ -1018,23 +1018,18 @@ Rules:
  */
 export type ExtractSalonHints = string;
 
-/**
- * Trims the given HTML, sends it to claude-haiku-4-5 with a structured-
- * output schema, and returns the parsed, validated salon data.
- */
-export async function extractSalon(
-  html: string,
-  sourceType: SourceType,
-  url: string,
-  hints?: ExtractSalonHints,
-): Promise<SalonExtract> {
-  const trimmed = trimHtmlForExtraction(html, sourceType);
-  // An explicit client timeout is required: without it the SDK refuses any
-  // non-streaming request whose max_tokens implies a >10min worst case
-  // ((3600*max_tokens)/128000 > 600s, i.e. max_tokens > ~21K). Haiku actually
-  // returns 32K tokens in ~1-2min, so a 10min ceiling is ample headroom.
-  const client = new Anthropic({ timeout: 600_000 });
+export type ExtractSalonOptions = {
+  /**
+   * Split big catalogs into slices of this many services and extract them in
+   * parallel (plus one header call for name/hours/images). Output tokens are
+   * the bottleneck: one 160-service call takes ~80s, 9 parallel slices ~10s.
+   */
+  chunkSize?: number;
+};
 
+type RawExtract = z.infer<typeof SalonExtractSchema>;
+
+function buildUserPrompt(trimmed: string, sourceType: SourceType, url: string, hints?: string): string {
   const promptLines = [
     `Source: ${sourceType}`,
     `Page URL: ${url}`,
@@ -1044,8 +1039,10 @@ export async function extractSalon(
     "",
     trimmed,
   ];
-  const userPrompt = promptLines.filter((line): line is string => line !== null).join("\n");
+  return promptLines.filter((line): line is string => line !== null).join("\n");
+}
 
+async function callExtraction(client: Anthropic, userPrompt: string): Promise<RawExtract> {
   const response = await client.messages.parse({
     model: EXTRACTION_MODEL,
     max_tokens: MAX_OUTPUT_TOKENS,
@@ -1053,13 +1050,95 @@ export async function extractSalon(
     output_config: { format: zodOutputFormat(SalonExtractSchema) },
     messages: [{ role: "user", content: userPrompt }],
   });
-
   if (!response.parsed_output) {
     throw new Error("claude-haiku-4-5 structured-output extraction returned no parsed_output");
   }
+  return response.parsed_output as RawExtract;
+}
+
+/** Splits `items` into consecutive slices of at most `size`. */
+export function sliceInChunks<T>(items: readonly T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
+/** Merges the header call (salon/staff) with the per-slice service lists, in page order. */
+export function mergeChunkedExtracts(header: RawExtract, slices: readonly RawExtract[]): RawExtract {
+  return { ...header, services: slices.flatMap((slice) => slice.services) };
+}
+
+async function extractChunked(
+  client: Anthropic,
+  data: TrimmedSalonData,
+  sourceType: SourceType,
+  url: string,
+  hints: string | undefined,
+  chunkSize: number,
+): Promise<RawExtract> {
+  const chunks = sliceInChunks(data.services, chunkSize);
+  const headerPrompt = buildUserPrompt(
+    renderTrimmedText({ ...data, services: [] }, sourceType),
+    sourceType,
+    url,
+    [hints, "Services are extracted separately: return an empty services array."].filter(Boolean).join(" "),
+  );
+  const slicePrompts = chunks.map((services, index) =>
+    buildUserPrompt(
+      renderTrimmedText({ ...data, services, images: [], hoursLines: [], staff: [], bio: null }, sourceType),
+      sourceType,
+      url,
+      [hints, `This is part ${index + 1} of ${chunks.length} of the catalogue: extract every service listed, nothing else (salon fields may stay empty).`]
+        .filter(Boolean)
+        .join(" "),
+    ),
+  );
+  const withRetry = (prompt: string) => callExtraction(client, prompt).catch(() => callExtraction(client, prompt));
+  const [header, ...slices] = await Promise.all([headerPrompt, ...slicePrompts].map(withRetry));
+  return mergeChunkedExtracts(header, slices);
+}
+
+/**
+ * Deterministic first look at a booking page (no LLM): salon name, service
+ * count and a few service names, so a live UI can show progress before the
+ * model has finished extracting.
+ */
+export function previewSalonPage(html: string, sourceType: SourceType) {
+  const data = parseSourcePage(html, sourceType);
+  return {
+    name: data.name,
+    serviceCount: data.services.length,
+    staffCount: data.staff.length,
+    serviceNames: data.services.slice(0, 5).map((service) => service.name),
+  };
+}
+
+/**
+ * Trims the given HTML, sends it to claude-haiku-4-5 with a structured-
+ * output schema, and returns the parsed, validated salon data.
+ */
+export async function extractSalon(
+  html: string,
+  sourceType: SourceType,
+  url: string,
+  hints?: ExtractSalonHints,
+  options: ExtractSalonOptions = {},
+): Promise<SalonExtract> {
+  const data = parseSourcePage(html, sourceType);
+  // An explicit client timeout is required: without it the SDK refuses any
+  // non-streaming request whose max_tokens implies a >10min worst case
+  // ((3600*max_tokens)/128000 > 600s, i.e. max_tokens > ~21K). Haiku actually
+  // returns 32K tokens in ~1-2min, so a 10min ceiling is ample headroom.
+  const client = new Anthropic({ timeout: 600_000 });
+
+  const chunkSize = options.chunkSize;
+  const output =
+    chunkSize && chunkSize > 0 && data.services.length > chunkSize
+      ? await extractChunked(client, data, sourceType, url, hints, chunkSize)
+      : await callExtraction(client, buildUserPrompt(renderTrimmedText(data, sourceType), sourceType, url, hints));
 
   // Reviews come from the page itself, never from the model's output.
-  const parsed = { ...(response.parsed_output as SalonExtract), reviews: extractPageReviews(html, sourceType) };
+  const parsed = { ...(output as SalonExtract), reviews: data.reviews };
   return sourceType === "planity" ? mergePlanityOptions(parsed, html) : parsed;
 }
 
