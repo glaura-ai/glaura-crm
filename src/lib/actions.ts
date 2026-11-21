@@ -16,6 +16,8 @@ import { canRevealOnboardingPassword } from "@/lib/onboarding-access";
 import { storeEmailImage } from "@/lib/email-assets/store";
 import { decryptJobPassword, fetchCompanyUserName, findCredentialJob } from "@/lib/onboarding/salon-credentials";
 import { renderWelcomeEmail } from "@/lib/onboarding/welcome-email";
+import { getAuth as getFirebaseAuth } from "@/lib/firebase-admin";
+import { findLinkedFirebaseAccounts, salonDeleteBlocker } from "@/lib/leads/firebase-guard";
 import type { ActivityType, BookingTool, Metier, SalonStatus, SalonType } from "@/generated/prisma/enums";
 
 async function currentUser() {
@@ -223,10 +225,36 @@ export async function archiveSalon(salonId: string) {
   revalidatePath("/dashboard");
 }
 
-/** Hard delete — activités, rappels et jobs partent en cascade avec le salon. */
-export async function deleteSalon(salonId: string) {
+async function linkedFirebaseAccountsFor(salonId: string) {
+  const salon = await prisma.salon.findUniqueOrThrow({
+    where: { id: salonId },
+    select: { name: true, contactEmail: true, onboardingJobs: { select: { accountUid: true, loginEmail: true } } },
+  });
+  const accounts = await findLinkedFirebaseAccounts(
+    { uids: salon.onboardingJobs.map((j) => j.accountUid), emails: [salon.contactEmail, ...salon.onboardingJobs.map((j) => j.loginEmail)] },
+    getFirebaseAuth(),
+  );
+  return { name: salon.name, accounts };
+}
+
+/** Pre-check for the delete button: is the lead tied to a Glaura account? */
+export async function checkSalonDelete(salonId: string) {
   const user = await requireCurrentUser();
   if (user.role !== "ADMIN") throw new Error("Suppression réservée aux admins");
+  return linkedFirebaseAccountsFor(salonId);
+}
+
+/**
+ * Hard delete — activités, rappels et jobs partent en cascade avec le salon.
+ * A lead linked to a Glaura (Firebase) account is deletable only once that
+ * account is disabled, and only with the salon name typed as confirmation.
+ */
+export async function deleteSalon(salonId: string, confirmName?: string) {
+  const user = await requireCurrentUser();
+  if (user.role !== "ADMIN") throw new Error("Suppression réservée aux admins");
+  const { name, accounts } = await linkedFirebaseAccountsFor(salonId);
+  const blocker = salonDeleteBlocker(accounts, name, confirmName);
+  if (blocker) throw new Error(blocker);
   await prisma.salon.delete({ where: { id: salonId } });
   revalidatePath("/salons");
   revalidatePath("/dashboard");
