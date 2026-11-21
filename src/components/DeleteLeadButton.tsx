@@ -4,7 +4,7 @@ import { useTransition } from "react";
 import { checkSalonDelete, deleteSalon } from "@/lib/actions";
 
 // Admin-only hard delete of a lead. When the lead is tied to a Glaura
-// (Firebase) account, the server refuses while that account is enabled, and
+// (Firebase) account, the server refuses while the salon is activated in the admin, and
 // asks for the salon name typed back once it is disabled.
 export function DeleteLeadButton({ salonId, salonName, className }: { salonId: string; salonName: string; className?: string }) {
   const [pending, startTransition] = useTransition();
@@ -16,8 +16,8 @@ export function DeleteLeadButton({ salonId, salonName, className }: { salonId: s
         const active = accounts.filter((a) => !a.disabled);
         if (active.length > 0) {
           window.alert(
-            `« ${salonName} » a un compte Glaura actif (${active.map((a) => a.email ?? a.uid).join(", ")}).\n` +
-              "Désactive-le dans Firebase avant de supprimer ce lead.",
+            `« ${salonName} » a un compte Glaura activé (${active.map((a) => a.email ?? a.uid).join(", ")}).\n` +
+              "Désactive-le dans l'admin avant de supprimer ce lead.",
           );
           return;
         }
