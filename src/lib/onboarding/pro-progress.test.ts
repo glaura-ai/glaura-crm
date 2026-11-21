@@ -40,4 +40,17 @@ describe("deriveProProgress", () => {
     expect(deriveProProgress(job, [ev("extract_done"), ev("review_required")], SECRET)).toMatchObject({ stage: "failed", previewToken: null });
     expect(deriveProProgress({ id: "j", status: "REVIEW_REQUIRED" }, [], SECRET).stage).toBe("failed");
   });
+
+  it("shows the deterministic name and counts from expand_done before extraction ends", () => {
+    const learning = deriveProProgress(job, [
+      ev("job_started"),
+      ev("expand_done", { sourceType: "planity", name: "Pur", serviceCount: 161, sampleServices: ["Coupe"] }),
+    ], SECRET);
+    expect(learning).toMatchObject({ stage: "learning", salonName: "Pur", serviceCount: 161, sampleServices: ["Coupe"] });
+    const preparing = deriveProProgress(job, [
+      ev("expand_done", { name: "Pur", serviceCount: 161 }),
+      ev("extract_done", { name: "Pur - Saint Germain", serviceCount: 158, sampleServices: [] }),
+    ], SECRET);
+    expect(preparing).toMatchObject({ stage: "preparing", salonName: "Pur - Saint Germain", serviceCount: 158 });
+  });
 });

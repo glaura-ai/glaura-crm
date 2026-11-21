@@ -23,6 +23,14 @@
 import { proPreviewJobContract } from "../src/lib/onboarding/pro-plan";
 import { applyBookingClaim } from "../src/lib/onboarding/pro-identity-gate";
 import { sampleServiceNames } from "../src/lib/onboarding/pro-progress";
+import {
+  buildOptions,
+  expandDoneData,
+  isLauraDemoJob,
+  LAURA_DEMO_JOB_WHERE,
+  LAURA_DEMO_LANE_BATCH,
+  LAURA_DEMO_POLL_MS,
+} from "../src/lib/onboarding/demo-fast-path";
 import { withSalonContactLogin } from "../src/lib/onboarding/contact-login";
 import { loadEnvConfig } from "@next/env";
 import type { PrismaClient } from "../src/generated/prisma/client";
@@ -44,6 +52,7 @@ type OnboardingOverrides = import("../src/lib/onboarding").OnboardingOverrides;
 type Pipeline = {
   expandSalonPage: typeof import("../src/lib/onboarding/expand").expandSalonPage;
   extractSalon: typeof import("../src/lib/onboarding/extract").extractSalon;
+  previewSalonPage: typeof import("../src/lib/onboarding/extract").previewSalonPage;
   createDisabledSalonAccount: typeof import("../src/lib/onboarding/create-account").createDisabledSalonAccount;
   emailAlreadyRegistered: typeof import("../src/lib/onboarding/create-account").emailAlreadyRegistered;
   duplicateEmailReason: typeof import("../src/lib/onboarding/create-account").duplicateEmailReason;
@@ -288,6 +297,7 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
       pipeline.emailAlreadyRegistered,
     );
     const isDemoFlow = overrides?.onboardingFlow === "demo";
+    const isDemoLaura = isLauraDemoJob(overrides);
 
     // 0. Fast-fail create-mode email collisions BEFORE the expensive scrape/LLM.
     // Enrich mode reuses an existing account, so it never collides here.
@@ -325,16 +335,21 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
     }
 
     // 1. Expand — deterministic Playwright reveal of all hidden services.
-    const expanded = await pipeline.expandSalonPage(sourceUrl);
+    // The Laura demo (visitor waiting on screen) runs a latency-first variant.
+    const fast = buildOptions(overrides);
+    const expanded = await pipeline.expandSalonPage(sourceUrl, fast.expand);
     await emit("system", {
       type: "expand_done",
       subtype: expanded.sourceType,
       text: `expanded ${expanded.sourceType} page (${expanded.html.length} bytes)`,
-      data: { sourceType: expanded.sourceType, title: expanded.title, htmlBytes: expanded.html.length },
+      data: expandDoneData(
+        expanded,
+        isDemoLaura ? pipeline.previewSalonPage(expanded.html, expanded.sourceType) : null,
+      ),
     });
 
     // 2. Extract — Haiku structured output from the trimmed HTML.
-    const extract = await pipeline.extractSalon(expanded.html, expanded.sourceType, sourceUrl);
+    const extract = await pipeline.extractSalon(expanded.html, expanded.sourceType, sourceUrl, undefined, fast.extract);
     await emit("system", {
       type: "extract_done",
       text: `extracted "${extract.salon.name}" — ${extract.services.length} service(s), ${extract.staff.length} staff`,
@@ -490,6 +505,8 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
           })),
           ...(isDemoFlow ? { onboardingFlow: "demo" as const } : proPreviewJobContract(overrides)),
           publicBaseUrl: overrides.publicBaseUrl ?? undefined,
+          // Laura demo: the visitor watches the build live on glaura.ai/laura.
+          notify: overrides.identityChannel !== "laura_demo",
         });
         await emit("system", {
           type: "preview_ready",
@@ -511,7 +528,7 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
 
     // Supplementary: seed the salon's Instagram reels into its video feed.
     // Never affects job status — reels are best-effort and fail soft.
-    await seedReelsForJob(emit, job.salon, result.ownerId, pipeline.onboardSalonReels);
+    if (!isDemoLaura) await seedReelsForJob(emit, job.salon, result.ownerId, pipeline.onboardSalonReels);
 
     await emit("system", { type: "job_exited", subtype: result.status, data: { exitCode: result.status === "failed" ? 1 : 0 } });
     console.log(`onboarded ${job.id} (${sourceUrl}): ${result.status}`);
@@ -562,6 +579,29 @@ async function processBatch(prisma: Prisma, pipeline: Pipeline) {
 }
 
 /**
+ * Dedicated lane for Laura-demo jobs: a visitor is waiting on screen, so these
+ * must neither wait for the 60s poll nor queue behind a long normal job. Runs
+ * concurrently with the main loop; claimJob's atomic QUEUED -> PROCESSING
+ * update guarantees a job is only ever built once.
+ */
+async function runDemoLane(prisma: Prisma, pipeline: Pipeline) {
+  while (true) {
+    try {
+      const jobs = await prisma.onboardingJob.findMany({
+        where: LAURA_DEMO_JOB_WHERE,
+        orderBy: { createdAt: "asc" },
+        take: LAURA_DEMO_LANE_BATCH,
+        select: { id: true },
+      });
+      await Promise.all(jobs.map((job) => processJob(prisma, pipeline, job.id)));
+    } catch (error) {
+      console.error("demo lane poll failed:", error);
+    }
+    await sleep(LAURA_DEMO_POLL_MS);
+  }
+}
+
+/**
  * On worker startup, reclaim jobs a previous worker left stuck in PROCESSING
  * (it crashed mid-flight) by resetting them to QUEUED. Only safe for the
  * single long-running `--loop` worker that owns the queue, so it's gated on
@@ -587,7 +627,7 @@ async function sleep(ms: number) {
 
 async function main() {
   const { prisma } = await import("../src/lib/db");
-  const [{ expandSalonPage }, { extractSalon }, createAccountMod, { encrypt }, { onboardSalonReels }, previewMod, identityMod, identityReviewMod, bookingClaimMod, demoFlowMod] =
+  const [{ expandSalonPage }, { extractSalon, previewSalonPage }, createAccountMod, { encrypt }, { onboardSalonReels }, previewMod, identityMod, identityReviewMod, bookingClaimMod, demoFlowMod] =
     await Promise.all([
       import("../src/lib/onboarding/expand"),
       import("../src/lib/onboarding/extract"),
@@ -603,6 +643,7 @@ async function main() {
   const pipeline: Pipeline = {
     expandSalonPage,
     extractSalon,
+    previewSalonPage,
     createDisabledSalonAccount: createAccountMod.createDisabledSalonAccount,
     emailAlreadyRegistered: createAccountMod.emailAlreadyRegistered,
     duplicateEmailReason: createAccountMod.duplicateEmailReason,
@@ -625,7 +666,8 @@ async function main() {
   await requeueOrphans(prisma);
   const { sweepStuckSignups } = await import("../src/lib/onboarding/signup-stuck-sweep");
   const watchIgToken = await makeIgTokenWatch();
-  console.log(`onboarding worker polling every ${pollMs / 1000}s`);
+  console.log(`onboarding worker polling every ${pollMs / 1000}s (Laura demo lane every ${LAURA_DEMO_POLL_MS / 1000}s)`);
+  void runDemoLane(prisma, pipeline);
   while (true) {
     await processBatch(prisma, pipeline);
     // Flag self-serve signups abandoned at the Instagram gate. Best-effort:

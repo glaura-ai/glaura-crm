@@ -45,8 +45,10 @@ export function deriveProProgress(
 ): ProProgress {
   const seen = new Set(events.map((event) => event.type).filter((type): type is string => Boolean(type)));
   const dataOf = (type: string) => record(events.find((event) => event.type === type)?.data);
-  const extract = dataOf("extract_done");
   const expand = dataOf("expand_done");
+  // The fast Laura-demo build publishes name/counts on expand_done (deterministic
+  // parse) before the LLM extraction ends; extract_done then takes over.
+  const extract = seen.has("extract_done") ? dataOf("extract_done") : expand;
 
   const failed = job.status === "FAILED" || job.status === "REVIEW_REQUIRED" ||
     seen.has("failed") || seen.has("job_error") || seen.has("review_required");
