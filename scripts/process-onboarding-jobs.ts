@@ -490,6 +490,8 @@ async function processJob(prisma: Prisma, pipeline: Pipeline, id: string) {
           })),
           ...(isDemoFlow ? { onboardingFlow: "demo" as const } : proPreviewJobContract(overrides)),
           publicBaseUrl: overrides.publicBaseUrl ?? undefined,
+          // Laura demo: the visitor watches the build live on glaura.ai/laura.
+          notify: overrides.identityChannel !== "laura_demo",
         });
         await emit("system", {
           type: "preview_ready",

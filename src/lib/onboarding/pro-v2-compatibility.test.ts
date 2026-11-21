@@ -135,6 +135,19 @@ describe("CRM demo flow", () => {
     expect(data.body).toContain("Réserver ma démo");
     expect(data.body).toContain("Voir ma page");
   });
+  it("sends no email or SMS when notify is false (Laura demo)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(prepareAndNotifyProPreview({ prisma: demoPrisma() as never, ...demoInput, notify: false }))
+        .resolves.toMatchObject({ emailQueued: false, smsSent: false });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(emailCreate).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(activationSet).toHaveBeenCalledWith(expect.objectContaining({ status: "demo_pending" }), { merge: true });
+  });
   it("sends a one-segment demo SMS with only the preview link", async () => {
     vi.stubEnv("GLAURA_SMS_SEND_URL", "https://sms.test/send");
     vi.stubEnv("GLAURA_PRO_SALES_CALENDAR_URL", "https://cal.test/demo");
