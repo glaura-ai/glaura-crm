@@ -68,7 +68,10 @@ export async function prepareAndNotifyProPreview(input: {
     : Array.isArray(salonImages) && typeof salonImages[0] === "string"
       ? salonImages[0]
       : null;
-  const emailHeroImageUrl = await emailSafeHeroImageSource(heroImageUrl);
+  // Only the notification email embeds it; skip the image download otherwise.
+  const emailHeroImageUrl = notify
+    ? await emailSafeHeroImageSource(heroImageUrl)
+    : PRO_PREVIEW_FALLBACK_HERO_IMAGE;
   const profileAddress = profile.get("address");
 
   const activationRef = db.collection("proActivationSessions").doc(tokenHash);

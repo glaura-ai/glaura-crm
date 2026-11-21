@@ -30,6 +30,11 @@ export type ExpandOptions = {
   timeoutMs?: number;
   /** Defaults to true; expose for local debugging with a visible browser. */
   headless?: boolean;
+  /**
+   * Latency-first mode (Laura demo): skips image/font/media downloads, clicks
+   * every expander of a pass in one in-page call and settles for less time.
+   */
+  fast?: boolean;
 };
 
 // Very large salon pages (hundreds of services with many "voir plus" expanders)
@@ -41,6 +46,9 @@ const ACTION_TIMEOUT_MS = 15_000;
 const CLICK_TIMEOUT_MS = 3_000;
 const CLICK_SETTLE_MS = 400;
 const MAX_EXPANDER_ITERATIONS = 30;
+const FAST_INITIAL_SETTLE_MS = 600;
+const FAST_CLICK_SETTLE_MS = 250;
+const BLOCKED_RESOURCE_TYPES = new Set(["image", "font", "media"]);
 
 const TREATWELL_COLLECTOR_ID = "glaura-expanded-services";
 
@@ -161,6 +169,38 @@ async function clickAllExpanders(page: Page, maxIterations = MAX_EXPANDER_ITERAT
 }
 
 /**
+ * Fast variant of [clickAllExpanders]: each pass clicks every visible expander
+ * in a single in-page call (no per-element round trips), then waits briefly for
+ * the re-render. Repeats until a pass finds nothing, capped at `maxIterations`.
+ */
+async function clickAllExpandersFast(page: Page, maxIterations = MAX_EXPANDER_ITERATIONS): Promise<number> {
+  let totalClicks = 0;
+  for (let i = 0; i < maxIterations; i++) {
+    const clicked = await page.evaluate(
+      ({ primary, fallback }) => {
+        document.querySelectorAll("details:not([open])").forEach((d) => d.setAttribute("open", ""));
+        const primaryRe = new RegExp(primary, "i");
+        const fallbackRe = new RegExp(fallback, "i");
+        let count = 0;
+        document.querySelectorAll<HTMLElement>("button, a, [role=button]").forEach((el) => {
+          if (!el.isConnected || el.offsetParent === null) return;
+          const text = (el.textContent ?? "").trim();
+          if (!text || !(primaryRe.test(text) || fallbackRe.test(text))) return;
+          el.click();
+          count += 1;
+        });
+        return count;
+      },
+      { primary: EXPANDER_TEXT_PATTERN.source, fallback: EXPANDER_FALLBACK_PATTERN.source },
+    );
+    if (clicked === 0) break;
+    totalClicks += clicked;
+    await page.waitForTimeout(FAST_CLICK_SETTLE_MS);
+  }
+  return totalClicks;
+}
+
+/**
  * Treatwell renders its service categories as single-select tabs (e.g. "Tout",
  * "Massage", "Épilation") that *replace* the visible service list rather than
  * accumulating it — clicking through them alone would leave only the last
@@ -248,18 +288,29 @@ async function withOverallTimeout<T>(work: Promise<T>, timeoutMs: number, label:
   }
 }
 
-async function runExpansion(browser: Browser, url: string, sourceType: SourceType): Promise<ExpandResult> {
+async function runExpansion(
+  browser: Browser,
+  url: string,
+  sourceType: SourceType,
+  fast: boolean,
+): Promise<ExpandResult> {
   const page = await browser.newPage();
   page.setDefaultTimeout(ACTION_TIMEOUT_MS);
+  if (fast) {
+    // Image URLs are read from the DOM attributes, never fetched here.
+    await page.route("**/*", (route) =>
+      BLOCKED_RESOURCE_TYPES.has(route.request().resourceType()) ? route.abort() : route.continue(),
+    );
+  }
 
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
-  await page.waitForTimeout(1_500); // let client-side rendering settle
+  await page.waitForTimeout(fast ? FAST_INITIAL_SETTLE_MS : 1_500); // let client-side rendering settle
 
   await dismissCookieBanner(page).catch(() => {});
 
   switch (sourceType) {
     case "planity":
-      await clickAllExpanders(page).catch(() => {});
+      await (fast ? clickAllExpandersFast(page) : clickAllExpanders(page)).catch(() => {});
       break;
     case "treatwell":
       await clickAllExpanders(page).catch(() => {});
@@ -308,6 +359,7 @@ export async function expandSalonPage(url: string, opts: ExpandOptions = {}): Pr
   const sourceType = detectSource(url);
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const headless = opts.headless ?? true;
+  const fast = opts.fast ?? false;
 
   // In the Docker image we install chromium via apk (Playwright's own bundled
   // download is skipped by `npm ci --ignore-scripts`) and point Playwright at
@@ -322,7 +374,7 @@ export async function expandSalonPage(url: string, opts: ExpandOptions = {}): Pr
     args: executablePath ? ["--no-sandbox", "--disable-dev-shm-usage"] : undefined,
   });
   try {
-    return await withOverallTimeout(runExpansion(browser, url, sourceType), timeoutMs, "expandSalonPage");
+    return await withOverallTimeout(runExpansion(browser, url, sourceType, fast), timeoutMs, "expandSalonPage");
   } finally {
     await browser.close().catch(() => {});
   }

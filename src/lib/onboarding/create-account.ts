@@ -284,6 +284,8 @@ async function readBackServices(ownerId: string): Promise<CreatedService[]> {
   });
 }
 
+const VARIANT_PATCH_CONCURRENCY = 20;
+
 /** Patches `variants` + `base_option_label` onto the created service docs that carry options. */
 async function patchServiceVariants(
   services: readonly CreatedService[],
@@ -292,19 +294,24 @@ async function patchServiceVariants(
 ): Promise<number> {
   const db = getDb();
   let patched = 0;
-  for (const svc of services) {
-    const patch = variantsByServiceName[variantKeyForServiceName(svc.service_name)];
-    if (!patch) continue;
-    try {
-      await db.collection("services").doc(svc.id).update({
-        variants: patch.variants,
-        base_option_label: patch.base_option_label,
-        updated_at: FieldValue.serverTimestamp(),
-      });
-      patched += 1;
-    } catch (error) {
-      warnings.push(`Variant patch failed for service ${svc.id} (${svc.service_name}): ${error instanceof Error ? error.message : String(error)}`);
-    }
+  const targets = services.filter((svc) => variantsByServiceName[variantKeyForServiceName(svc.service_name)]);
+  // Bounded parallelism: one sequential round trip per service is the slow part on big catalogs.
+  for (let i = 0; i < targets.length; i += VARIANT_PATCH_CONCURRENCY) {
+    await Promise.all(
+      targets.slice(i, i + VARIANT_PATCH_CONCURRENCY).map(async (svc) => {
+        const patch = variantsByServiceName[variantKeyForServiceName(svc.service_name)];
+        try {
+          await db.collection("services").doc(svc.id).update({
+            variants: patch.variants,
+            base_option_label: patch.base_option_label,
+            updated_at: FieldValue.serverTimestamp(),
+          });
+          patched += 1;
+        } catch (error) {
+          warnings.push(`Variant patch failed for service ${svc.id} (${svc.service_name}): ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }),
+    );
   }
   return patched;
 }

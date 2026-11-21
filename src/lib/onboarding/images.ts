@@ -102,26 +102,31 @@ export async function rehostSalonImages(
     .slice(0, MAX_IMAGES);
   if (urls.length === 0) return { profileImg: "", salonImages: [] };
 
-  const salonImages: string[] = [];
-  for (let i = 0; i < urls.length; i += 1) {
-    try {
-      const hosted = await hostOne(urls[i], `salon_images/${ownerId}_${i}-${now}.jpg`);
-      if (hosted) salonImages.push(hosted);
-      else warnings.push(`salon image skipped (download failed): ${urls[i]}`);
-    } catch (error) {
-      warnings.push(`salon image upload failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
+  // Downloads/uploads run concurrently (sequentially they cost ~1s per image);
+  // results keep the page order.
+  const [hostedImages, main] = await Promise.all([
+    Promise.all(
+      urls.map(async (url, i) => {
+        try {
+          const hosted = await hostOne(url, `salon_images/${ownerId}_${i}-${now}.jpg`);
+          if (!hosted) warnings.push(`salon image skipped (download failed): ${url}`);
+          return hosted;
+        } catch (error) {
+          warnings.push(`salon image upload failed: ${error instanceof Error ? error.message : String(error)}`);
+          return null;
+        }
+      }),
+    ),
+    hostOne(urls[0], `profile_images/${ownerId}_${now}.jpg`).catch((error: unknown) => {
+      warnings.push(`profile image upload failed: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }),
+  ]);
 
+  const salonImages = hostedImages.filter((hosted): hosted is string => hosted !== null);
   if (salonImages.length === 0) return { profileImg: "", salonImages: [] };
 
-  let profileImg = salonImages[0];
-  try {
-    const main = await hostOne(urls[0], `profile_images/${ownerId}_${now}.jpg`);
-    if (main) profileImg = main;
-  } catch (error) {
-    warnings.push(`profile image upload failed: ${error instanceof Error ? error.message : String(error)}`);
-  }
+  const profileImg = main ?? salonImages[0];
 
   return { profileImg, salonImages };
 }
