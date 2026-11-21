@@ -1,13 +1,18 @@
 // Guard for hard-deleting a CRM lead that may own a Glaura (Firebase Auth)
 // account: onboarding jobs record the uid, Laura trials create the account on
-// the lead's email. Deleting the lead while that account is live would orphan a
-// working salon login, so it must be disabled first and the deletion confirmed.
+// the lead's email. "Disabled" matches the admin's Activate toggle — the
+// Firestore `userProfile.enable` / `isActive` flags, not the Firebase Auth login
+// switch. A lead whose salon is still activated can't be deleted; otherwise the
+// deletion needs the salon name typed back.
 
 export type LinkedFirebaseAccount = { uid: string; email: string | null; disabled: boolean };
 
+/** True when the admin's activation flag is on for this uid's userProfile. */
+export type IsAdminEnabled = (uid: string) => Promise<boolean>;
+
 type AuthLike = {
-  getUser(uid: string): Promise<{ uid: string; email?: string; disabled: boolean }>;
-  getUserByEmail(email: string): Promise<{ uid: string; email?: string; disabled: boolean }>;
+  getUser(uid: string): Promise<{ uid: string; email?: string }>;
+  getUserByEmail(email: string): Promise<{ uid: string; email?: string }>;
 };
 
 const isNotFound = (error: unknown) =>
@@ -25,6 +30,7 @@ async function lookup(fn: () => ReturnType<AuthLike["getUser"]>) {
 export async function findLinkedFirebaseAccounts(
   refs: { uids: (string | null)[]; emails: (string | null)[] },
   auth: AuthLike,
+  isAdminEnabled: IsAdminEnabled,
 ): Promise<LinkedFirebaseAccount[]> {
   const uids = [...new Set(refs.uids.filter((u): u is string => !!u))];
   const emails = [...new Set(refs.emails.map((e) => e?.trim().toLowerCase()).filter((e): e is string => !!e))];
@@ -32,9 +38,9 @@ export async function findLinkedFirebaseAccounts(
     ...uids.map((uid) => lookup(() => auth.getUser(uid))),
     ...emails.map((email) => lookup(() => auth.getUserByEmail(email))),
   ]);
-  const byUid = new Map<string, LinkedFirebaseAccount>();
-  for (const u of users) if (u && !byUid.has(u.uid)) byUid.set(u.uid, { uid: u.uid, email: u.email ?? null, disabled: u.disabled });
-  return [...byUid.values()];
+  const byUid = new Map<string, { uid: string; email: string | null }>();
+  for (const u of users) if (u && !byUid.has(u.uid)) byUid.set(u.uid, { uid: u.uid, email: u.email ?? null });
+  return Promise.all([...byUid.values()].map(async (a) => ({ ...a, disabled: !(await isAdminEnabled(a.uid)) })));
 }
 
 /** Returns a French error message when deletion must not proceed, null otherwise. */
@@ -47,7 +53,7 @@ export function salonDeleteBlocker(
   const active = accounts.filter((a) => !a.disabled);
   if (active.length > 0) {
     const who = active.map((a) => a.email ?? a.uid).join(", ");
-    return `Compte Glaura actif (${who}) : désactive-le dans Firebase avant de supprimer ce lead.`;
+    return `Compte Glaura actif (${who}) : désactive-le dans l'admin avant de supprimer ce lead.`;
   }
   const normalize = (s: string) => s.trim().toLowerCase();
   if (!confirmName || normalize(confirmName) !== normalize(salonName)) {
