@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { findLinkedFirebaseAccounts, salonDeleteBlocker } from "./firebase-guard";
 
-type FakeUser = { uid: string; email?: string; disabled: boolean };
+type FakeUser = { uid: string; email?: string };
+const enabledIn = (uids: string[]) => async (uid: string) => uids.includes(uid);
 
 function fakeAuth(users: FakeUser[]) {
   return {
@@ -21,15 +22,15 @@ function fakeAuth(users: FakeUser[]) {
 describe("findLinkedFirebaseAccounts", () => {
   it("returns nothing when the lead has no uid nor email", async () => {
     const auth = fakeAuth([]);
-    expect(await findLinkedFirebaseAccounts({ uids: [], emails: [] }, auth)).toEqual([]);
+    expect(await findLinkedFirebaseAccounts({ uids: [], emails: [] }, auth, enabledIn([]))).toEqual([]);
   });
 
-  it("finds accounts by onboarding uid and by contact email, deduped", async () => {
+  it("finds accounts by onboarding uid and by contact email, deduped, disabled per the admin flag", async () => {
     const auth = fakeAuth([
-      { uid: "u1", email: "a@x.fr", disabled: true },
-      { uid: "u2", email: "b@x.fr", disabled: false },
+      { uid: "u1", email: "a@x.fr" },
+      { uid: "u2", email: "b@x.fr" },
     ]);
-    const found = await findLinkedFirebaseAccounts({ uids: ["u1", null], emails: [" A@x.fr ", "b@x.fr", "none@x.fr"] }, auth);
+    const found = await findLinkedFirebaseAccounts({ uids: ["u1", null], emails: [" A@x.fr ", "b@x.fr", "none@x.fr"] }, auth, enabledIn(["u2"]));
     expect(found).toEqual([
       { uid: "u1", email: "a@x.fr", disabled: true },
       { uid: "u2", email: "b@x.fr", disabled: false },
@@ -38,12 +39,12 @@ describe("findLinkedFirebaseAccounts", () => {
 
   it("ignores a uid whose Firebase account was already deleted", async () => {
     const auth = fakeAuth([]);
-    expect(await findLinkedFirebaseAccounts({ uids: ["gone"], emails: [] }, auth)).toEqual([]);
+    expect(await findLinkedFirebaseAccounts({ uids: ["gone"], emails: [] }, auth, enabledIn([]))).toEqual([]);
   });
 
   it("propagates unexpected Firebase errors instead of treating them as 'no account'", async () => {
     const auth = { getUser: vi.fn(async () => { throw new Error("network down"); }), getUserByEmail: vi.fn() };
-    await expect(findLinkedFirebaseAccounts({ uids: ["u1"], emails: [] }, auth)).rejects.toThrow("network down");
+    await expect(findLinkedFirebaseAccounts({ uids: ["u1"], emails: [] }, auth, enabledIn([]))).rejects.toThrow("network down");
   });
 });
 
